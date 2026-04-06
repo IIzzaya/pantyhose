@@ -42,6 +42,9 @@ pantyhose.exe
 # Build
 go build -o pantyhose.exe .
 
+# Build (kill running process first — required on Windows if pantyhose.exe is in use)
+Stop-Process -Name pantyhose -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; go build -o pantyhose.exe . 2>&1
+
 # Run tests (unit + integration)
 go test -v -count=1 -timeout 60s ./...
 
