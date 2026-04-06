@@ -181,30 +181,33 @@ func checkFirewall(port string) {
 }
 
 func checkFirewallRules(port string) (tcpOk, udpOk bool) {
-	script := fmt.Sprintf(
-		`$r = Get-NetFirewallRule -Direction Inbound -Action Allow -Enabled True -ErrorAction SilentlyContinue `+
-			`| Get-NetFirewallPortFilter -ErrorAction SilentlyContinue; `+
-			`$t = @($r | Where-Object { ($_.LocalPort -eq '%s' -or $_.LocalPort -eq 'Any') -and ($_.Protocol -eq 'TCP' -or $_.Protocol -eq 'Any') }).Count; `+
-			`$u = @($r | Where-Object { ($_.LocalPort -eq '%s' -or $_.LocalPort -eq 'Any') -and ($_.Protocol -eq 'UDP' -or $_.Protocol -eq 'Any') }).Count; `+
-			`Write-Output "$t $u"`,
-		port, port,
-	)
-
-	out, err := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	out, err := exec.Command("netsh", "advfirewall", "firewall", "show", "rule", "name=all", "dir=in").CombinedOutput()
 	if err != nil {
 		debugf("Firewall check failed: %v", err)
 		return false, false
 	}
 
-	parts := strings.Fields(strings.TrimSpace(string(out)))
-	if len(parts) != 2 {
-		debugf("Firewall check: unexpected output %q", string(out))
-		return false, false
-	}
+	// Rule blocks in netsh output are separated by a line of dashes.
+	// Port numbers and protocol names (TCP/UDP/Any) are always ASCII
+	// regardless of Windows locale, so string matching works reliably.
+	sep := strings.Repeat("-", 70)
+	blocks := strings.Split(string(out), sep)
 
-	tcpCount, _ := strconv.Atoi(parts[0])
-	udpCount, _ := strconv.Atoi(parts[1])
-	return tcpCount > 0, udpCount > 0
+	for _, block := range blocks {
+		if !strings.Contains(block, port) {
+			continue
+		}
+		if strings.Contains(block, "TCP") {
+			tcpOk = true
+		}
+		if strings.Contains(block, "UDP") {
+			udpOk = true
+		}
+		if tcpOk && udpOk {
+			return
+		}
+	}
+	return
 }
 
 func isShutdownError(err error) bool {
