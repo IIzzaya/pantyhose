@@ -13,7 +13,16 @@ import (
 	"github.com/txthinking/socks5"
 )
 
-var version = "0.3.0"
+var (
+	version = "0.4.0"
+	verbose bool
+)
+
+func debugf(format string, args ...any) {
+	if verbose {
+		log.Printf("[DEBUG] "+format, args...)
+	}
+}
 
 func main() {
 	addr := flag.String("addr", "0.0.0.0:1080", "Listen address (host:port)")
@@ -24,8 +33,11 @@ func main() {
 	udpTimeout := flag.Int("udp-timeout", 60, "UDP session timeout in seconds")
 	noIPv6 := flag.Bool("no-ipv6", false, "Reject IPv6 destinations and force IPv4-only outbound")
 	sniRemap := flag.Bool("sni-remap", false, "Sniff TLS SNI and re-resolve hostnames via local DNS (fixes client-side DNS pollution)")
+	verboseFlag := flag.Bool("verbose", false, "Enable verbose logging (SNI remap details, connection info)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
+
+	verbose = *verboseFlag
 
 	if *showVersion {
 		fmt.Printf("pantyhose %s\n", version)

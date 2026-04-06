@@ -69,6 +69,7 @@ Flags:
   --udp-timeout int    UDP session timeout in seconds (default 60)
   --no-ipv6            Reject IPv6 destinations, force IPv4-only outbound
   --sni-remap          Sniff TLS SNI and re-resolve hostnames via local DNS
+  --verbose            Enable verbose logging (SNI details, connection lifecycle)
   --version            Print version and exit
 ```
 

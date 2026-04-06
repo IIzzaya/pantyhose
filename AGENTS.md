@@ -95,6 +95,7 @@ go test -v -count=1 -timeout 60s ./...
 | `--udp-timeout` | `60` | UDP session timeout (seconds) |
 | `--no-ipv6` | `false` | Reject IPv6 destinations, force `tcp4`/`udp4` outbound. Overrides `socks5.DialTCP` and `socks5.DialUDP` package-level vars. |
 | `--sni-remap` | `false` | Enable `SNIRemapHandler`: for port 443 connections, read TLS ClientHello, extract SNI hostname, re-resolve via local DNS, connect to correct IP. Non-443 traffic delegated to `DefaultHandle`. |
+| `--verbose` | `false` | Enable verbose logging: SNI passthrough details, DNS resolution results, connection lifecycle. Without this, only actual IP remaps and errors are logged. |
 | `--version` | — | Print version and exit |
 
 ## Git Workflow

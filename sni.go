@@ -61,10 +61,16 @@ func (h *SNIRemapHandler) handleTLSWithSNI(s *socks5.Server, c *net.TCPConn, r *
 
 	if sni != "" {
 		resolved := h.resolveHostname(sni, destPort)
-		if resolved != "" {
+		if resolved != "" && resolved != destAddr {
 			log.Printf("SNI remap: %s -> %s (host: %s)", destAddr, resolved, sni)
 			destAddr = resolved
+		} else if resolved != "" {
+			debugf("SNI passthrough: %s (host: %s)", destAddr, sni)
+		} else {
+			debugf("SNI resolve failed for %s, using original %s", sni, destAddr)
 		}
+	} else {
+		debugf("No SNI in ClientHello for %s, using original", destAddr)
 	}
 
 	network := "tcp"
@@ -75,11 +81,13 @@ func (h *SNIRemapHandler) handleTLSWithSNI(s *socks5.Server, c *net.TCPConn, r *
 		network = "tcp4"
 	}
 
+	debugf("Connecting to %s (%s)", destAddr, network)
 	rc, err := net.DialTimeout(network, destAddr, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", destAddr, err)
 	}
 	defer rc.Close()
+	debugf("Connected to %s", destAddr)
 
 	if _, err := rc.Write(firstData); err != nil {
 		return fmt.Errorf("forward ClientHello: %w", err)
