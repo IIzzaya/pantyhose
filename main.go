@@ -6,7 +6,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -72,7 +74,7 @@ func main() {
 		log.Fatalf("Invalid listen address %q: %v", *addr, err)
 	}
 
-	printFirewallWarning(port)
+	checkFirewall(port)
 
 	server, err := socks5.NewClassicServer(*addr, outboundIP, *user, *pass, *tcpTimeout, *udpTimeout)
 	if err != nil {
@@ -156,11 +158,53 @@ func detectOutboundIPFallback() (string, error) {
 	return "", fmt.Errorf("no suitable network interface found")
 }
 
-func printFirewallWarning(port string) {
-	log.Println("WARNING: Make sure the firewall allows inbound connections on your listen port.")
-	log.Printf("  On Windows, run as Administrator:")
-	log.Printf("    netsh advfirewall firewall add rule name=\"pantyhose-tcp\" dir=in action=allow protocol=TCP localport=%s", port)
-	log.Printf("    netsh advfirewall firewall add rule name=\"pantyhose-udp\" dir=in action=allow protocol=UDP localport=%s", port)
+func checkFirewall(port string) {
+	if runtime.GOOS != "windows" {
+		log.Println("NOTE: Ensure your firewall allows inbound TCP+UDP on port " + port)
+		return
+	}
+
+	tcpOk, udpOk := checkFirewallRules(port)
+
+	if tcpOk && udpOk {
+		log.Printf("Firewall: TCP and UDP port %s are open for inbound connections.", port)
+		return
+	}
+
+	log.Println("WARNING: Firewall may block inbound connections. Run as Administrator:")
+	if !tcpOk {
+		log.Printf("  netsh advfirewall firewall add rule name=\"pantyhose-tcp\" dir=in action=allow protocol=TCP localport=%s", port)
+	}
+	if !udpOk {
+		log.Printf("  netsh advfirewall firewall add rule name=\"pantyhose-udp\" dir=in action=allow protocol=UDP localport=%s", port)
+	}
+}
+
+func checkFirewallRules(port string) (tcpOk, udpOk bool) {
+	script := fmt.Sprintf(
+		`$r = Get-NetFirewallRule -Direction Inbound -Action Allow -Enabled True -ErrorAction SilentlyContinue `+
+			`| Get-NetFirewallPortFilter -ErrorAction SilentlyContinue; `+
+			`$t = @($r | Where-Object { ($_.LocalPort -eq '%s' -or $_.LocalPort -eq 'Any') -and ($_.Protocol -eq 'TCP' -or $_.Protocol -eq 'Any') }).Count; `+
+			`$u = @($r | Where-Object { ($_.LocalPort -eq '%s' -or $_.LocalPort -eq 'Any') -and ($_.Protocol -eq 'UDP' -or $_.Protocol -eq 'Any') }).Count; `+
+			`Write-Output "$t $u"`,
+		port, port,
+	)
+
+	out, err := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	if err != nil {
+		debugf("Firewall check failed: %v", err)
+		return false, false
+	}
+
+	parts := strings.Fields(strings.TrimSpace(string(out)))
+	if len(parts) != 2 {
+		debugf("Firewall check: unexpected output %q", string(out))
+		return false, false
+	}
+
+	tcpCount, _ := strconv.Atoi(parts[0])
+	udpCount, _ := strconv.Atoi(parts[1])
+	return tcpCount > 0, udpCount > 0
 }
 
 func isShutdownError(err error) bool {
