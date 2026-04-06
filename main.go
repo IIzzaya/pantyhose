@@ -74,7 +74,7 @@ func main() {
 		log.Fatalf("Invalid listen address %q: %v", *addr, err)
 	}
 
-	checkFirewall(port)
+	go checkFirewall(port)
 
 	server, err := socks5.NewClassicServer(*addr, outboundIP, *user, *pass, *tcpTimeout, *udpTimeout)
 	if err != nil {
