@@ -57,6 +57,7 @@ func main() {
 	sniRemap := flag.Bool("sni-remap", false, "Sniff TLS SNI and re-resolve hostnames via local DNS (fixes client-side DNS pollution)")
 	sniPorts := flag.String("sni-ports", "443", "Comma-separated list of ports to apply SNI remap (default: 443)")
 	verboseFlag := flag.Bool("verbose", false, "Enable verbose logging (SNI remap details, connection info)")
+	fwClean := flag.Bool("fw-clean", false, "Print commands to remove firewall rules for the listen port and exit (does not start server)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
@@ -80,6 +81,13 @@ func main() {
 	portStr := strconv.Itoa(*port)
 	if _, p, err := net.SplitHostPort(listenAddr); err == nil {
 		portStr = p
+	}
+
+	if *fwClean {
+		fmt.Println("Run the following commands as Administrator to remove firewall rules:")
+		fmt.Printf("  netsh advfirewall firewall delete rule name=\"pantyhose-tcp\" protocol=TCP localport=%s\n", portStr)
+		fmt.Printf("  netsh advfirewall firewall delete rule name=\"pantyhose-udp\" protocol=UDP localport=%s\n", portStr)
+		os.Exit(0)
 	}
 
 	if *noIPv6 {
