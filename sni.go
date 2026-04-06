@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strconv"
 	"time"
@@ -63,7 +62,7 @@ func (h *SNIRemapHandler) handleTLSWithSNI(s *socks5.Server, c *net.TCPConn, r *
 	if sni != "" {
 		resolved := h.resolveHostname(sni, destPort)
 		if resolved != "" && resolved != destAddr {
-			log.Printf("SNI remap: %s -> %s (host: %s)", destAddr, resolved, sni)
+			debugf("SNI remap: %s -> %s (host: %s)", destAddr, resolved, sni)
 			destAddr = resolved
 		} else if resolved != "" {
 			debugf("SNI passthrough: %s (host: %s)", destAddr, sni)
