@@ -181,7 +181,7 @@ func main() {
 		inner = &socks5.DefaultHandle{}
 		log.Println("SNI remap disabled")
 	}
-	handler := &connLogger{inner: inner}
+	handler := inner
 
 	log.Printf("SOCKS5 server listening on %s (TCP + UDP)", listenAddr)
 	green := "\033[1;32m"
@@ -321,29 +321,6 @@ func printHelpCN() {
   pantyhose.exe --user admin --pass secret         # 启用用户名密码认证
   pantyhose.exe --fw-clean --port 8899             # 输出清理 8899 端口防火墙规则的命令
 `, version)
-}
-
-type connLogger struct {
-	inner socks5.Handler
-}
-
-func (cl *connLogger) TCPHandle(s *socks5.Server, c *net.TCPConn, r *socks5.Request) error {
-	client := c.RemoteAddr().String()
-	dest := r.Address()
-	log.Printf("CONNECT %s -> %s", client, dest)
-	start := time.Now()
-	err := cl.inner.TCPHandle(s, c, r)
-	elapsed := time.Since(start).Truncate(time.Second)
-	if err != nil {
-		log.Printf("DISCONNECT %s -> %s (%s, error: %v)", client, dest, elapsed, err)
-	} else {
-		log.Printf("DISCONNECT %s -> %s (%s)", client, dest, elapsed)
-	}
-	return nil
-}
-
-func (cl *connLogger) UDPHandle(s *socks5.Server, addr *net.UDPAddr, d *socks5.Datagram) error {
-	return cl.inner.UDPHandle(s, addr, d)
 }
 
 func isShutdownError(err error) bool {
