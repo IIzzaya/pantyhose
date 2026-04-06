@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"unsafe"
 
 	"github.com/txthinking/socks5"
 )
@@ -27,7 +28,24 @@ func debugf(format string, args ...any) {
 	}
 }
 
+func enableANSIColors() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	const enableVirtualTerminalProcessing = 0x0004
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	setConsoleMode := kernel32.NewProc("SetConsoleMode")
+	getConsoleMode := kernel32.NewProc("GetConsoleMode")
+	handle := syscall.Handle(os.Stderr.Fd())
+	var mode uint32
+	r, _, _ := getConsoleMode.Call(uintptr(handle), uintptr(unsafe.Pointer(&mode)))
+	if r != 0 {
+		setConsoleMode.Call(uintptr(handle), uintptr(mode|enableVirtualTerminalProcessing))
+	}
+}
+
 func main() {
+	enableANSIColors()
 	addr := flag.String("addr", "0.0.0.0", "Listen address (IP or host:port; use --port to set port separately)")
 	port := flag.Int("port", 1080, "Listen port (combined with --addr)")
 	ip := flag.String("ip", "", "Outbound IP for UDP ASSOCIATE replies (auto-detected if empty)")
@@ -182,12 +200,14 @@ func checkFirewall(port string) {
 		return
 	}
 
-	log.Println("WARNING: Firewall may block inbound connections. Run as Administrator:")
+	red := "\033[1;31m"
+	reset := "\033[0m"
+	fmt.Fprintf(os.Stderr, "%s[ERROR] Firewall may block inbound connections. Run as Administrator:%s\n", red, reset)
 	if !tcpOk {
-		log.Printf("  netsh advfirewall firewall add rule name=\"pantyhose-tcp\" dir=in action=allow protocol=TCP localport=%s", port)
+		fmt.Fprintf(os.Stderr, "%s  netsh advfirewall firewall add rule name=\"pantyhose-tcp\" dir=in action=allow protocol=TCP localport=%s%s\n", red, port, reset)
 	}
 	if !udpOk {
-		log.Printf("  netsh advfirewall firewall add rule name=\"pantyhose-udp\" dir=in action=allow protocol=UDP localport=%s", port)
+		fmt.Fprintf(os.Stderr, "%s  netsh advfirewall firewall add rule name=\"pantyhose-udp\" dir=in action=allow protocol=UDP localport=%s%s\n", red, port, reset)
 	}
 }
 
