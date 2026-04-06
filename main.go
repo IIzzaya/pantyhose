@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -22,6 +23,21 @@ var (
 	version = "0.4.0"
 	verbose bool
 )
+
+type logFilter struct {
+	out   io.Writer
+	drops []string
+}
+
+func (f *logFilter) Write(p []byte) (n int, err error) {
+	line := string(p)
+	for _, drop := range f.drops {
+		if strings.Contains(line, drop) {
+			return len(p), nil
+		}
+	}
+	return f.out.Write(p)
+}
 
 func debugf(format string, args ...any) {
 	if verbose {
@@ -99,9 +115,11 @@ func main() {
 
 	if *noIPv6 {
 		installIPv4OnlyDialers()
+		log.SetOutput(&logFilter{out: os.Stderr, drops: []string{errIPv6Disabled.Error()}})
 		log.Println("IPv6 disabled: all outbound connections forced to IPv4")
 	} else if !probeIPv6() {
 		installIPv4OnlyDialers()
+		log.SetOutput(&logFilter{out: os.Stderr, drops: []string{errIPv6Disabled.Error()}})
 		log.Println("IPv6 not available (auto-detected): all outbound connections forced to IPv4")
 	}
 
