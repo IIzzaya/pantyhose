@@ -151,7 +151,9 @@ func main() {
 	}
 
 	log.Printf("SOCKS5 server listening on %s (TCP + UDP)", listenAddr)
-	log.Println("Press Ctrl+C to stop the server.")
+	green := "\033[1;32m"
+	reset := "\033[0m"
+	fmt.Fprintf(os.Stderr, "%sServer started. Press Ctrl+C to stop.%s\n", green, reset)
 
 	if err := server.ListenAndServe(handler); err != nil {
 		if isShutdownError(err) {
