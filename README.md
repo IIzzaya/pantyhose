@@ -2,18 +2,18 @@
 
 A lightweight SOCKS5 forward proxy server written in Go. Run it on a machine with network access (e.g. a corporate dedicated line), and route another machine's entire network traffic through it using [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge), [Proxifier](https://www.proxifier.com/), or similar tools.
 
-Built with [txthinking/socks5](https://github.com/txthinking/socks5). Supports TCP (CONNECT) and UDP (UDP ASSOCIATE) with optional username/password authentication, IPv6 filtering, and TLS SNI-based DNS remapping.
+Built with [txthinking/socks5](https://github.com/txthinking/socks5). Supports TCP (CONNECT) and UDP (UDP ASSOCIATE) with optional username/password authentication. TLS SNI-based DNS remapping is enabled by default; IPv6 is auto-detected.
 
 ## Use Case
 
-```
-┌──────────────────────┐         VPN / LAN         ┌─────────────────────────┐
-│  macOS / Linux / Win │  ──────────────────────►   │  Windows (corporate)    │
-│                      │                            │                         │
-│  ProxyBridge/        │   SOCKS5 (TCP+UDP)         │  pantyhose.exe          │
-│  Proxifier           │   ──────────────────────►  │  --no-ipv6 --sni-remap  │
-│                      │                            │         │               │
-│  All traffic proxied │                            │         ▼               │
+``` txt
+┌──────────────────────┐                            ┌─────────────────────────┐
+│  macOS / Linux / Win │                            │  Windows (corporate)    │
+│                      │          VPN / LAN         │                         │
+│  ProxyBridge/        │   ──────────────────────►  │  pantyhose.exe          │
+│  Proxifier           │                            │  (defaults: SNI on,IPv6 auto)│
+│                      │       SOCKS5 (TCP+UDP)     │         │               │
+│  All traffic proxied │   ──────────────────────►  │         ▼               │
 │                      │                            │  Corporate dedicated    │
 │                      │                            │  line (internet access) │
 └──────────────────────┘                            └─────────────────────────┘
@@ -24,20 +24,20 @@ Built with [txthinking/socks5](https://github.com/txthinking/socks5). Supports T
 ## Quick Start
 
 ```bash
-# Basic usage (no auth, default port 1080)
+# Default (SNI remap on, IPv6 auto-detected, port 1080)
 pantyhose.exe
 
-# Recommended for cross-network proxying with DNS pollution
-pantyhose.exe --no-ipv6 --sni-remap
-
 # With authentication
-pantyhose.exe --no-ipv6 --sni-remap --user admin --pass secret
+pantyhose.exe --user admin --pass secret
 
 # Custom port
-pantyhose.exe --port 8899 --no-ipv6 --sni-remap
+pantyhose.exe --port 8899
 
-# Custom address and port
-pantyhose.exe --addr 0.0.0.0 --port 9090 --no-ipv6 --sni-remap
+# Force enable IPv6 outbound
+pantyhose.exe --enable-ipv6
+
+# Disable SNI remap (plain proxy mode)
+pantyhose.exe --no-sni-remap
 ```
 
 ## Installation
@@ -71,8 +71,8 @@ Flags:
   --pass string        Password for SOCKS5 auth (no auth if empty)
   --tcp-timeout int    TCP idle timeout in seconds (default 60)
   --udp-timeout int    UDP session timeout in seconds (default 60)
-  --no-ipv6            Reject IPv6 destinations, force IPv4-only outbound
-  --sni-remap          Sniff TLS SNI and re-resolve hostnames via local DNS
+  --enable-ipv6        Allow IPv6 outbound (default: auto-disabled if unavailable)
+  --no-sni-remap       Disable TLS SNI hostname re-resolution (enabled by default)
   --sni-ports string   Comma-separated ports for SNI remap (default "443")
   --verbose            Enable verbose logging (SNI details, connection lifecycle)
   --version            Print version and exit
@@ -85,19 +85,21 @@ Flags:
 
 ## Flags Explained
 
-### `--no-ipv6`
+### IPv6 Handling (auto / `--enable-ipv6`)
 
-**Problem**: The client machine's DNS may resolve domains to IPv6 addresses, but the proxy machine has no IPv6 connectivity. Without this flag, connections to IPv6 destinations will hang for ~30 seconds before timing out.
+**Default behavior**: At startup, pantyhose probes IPv6 connectivity (TCP to `[2001:4860:4860::8888]:53`). If IPv6 is unavailable, all outbound connections are automatically forced to IPv4 — no flags needed. If IPv6 is available, it is still disabled by default to avoid DNS-polluted IPv6 addresses causing timeouts.
 
-**Solution**: When enabled, pantyhose immediately rejects any IPv6 destination and forces all outbound connections to use IPv4 (`tcp4`/`udp4`).
+**`--enable-ipv6`**: Forces IPv6 support on, even if the auto-detection would disable it. Use this only if you know the proxy machine has working IPv6 connectivity and you want to allow IPv6 destinations.
 
-**When to use**: When the proxy machine lacks IPv6 internet connectivity (common in corporate networks). Check by running `ping -6 google.com` on the proxy machine — if it fails, use this flag.
+**When IPv6 causes problems**: The client machine's DNS may resolve domains to IPv6 addresses, but the proxy machine has no IPv6 route. Without IPv4-only mode, these connections hang for ~30 seconds before timing out. The auto-detection handles this transparently.
 
-### `--sni-remap`
+### SNI Remap (default on / `--no-sni-remap`)
 
-**Problem**: The client machine's DNS is polluted (e.g. by a VPN client like CorpLink that returns fake IPs for certain domains). Since tools like [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) intercept traffic at the kernel level, they send already-resolved IP addresses — not domain names — to the SOCKS5 proxy. The proxy connects to the fake IP and fails.
+SNI remap is **enabled by default**. It solves DNS pollution from VPN clients like CorpLink.
 
-**Solution**: When enabled, pantyhose intercepts HTTPS connections (port 443) and reads the TLS ClientHello to extract the SNI (Server Name Indication) hostname. It then re-resolves that hostname using the proxy machine's local DNS (which returns correct IPs) and connects to the correct destination.
+**Problem**: The client machine's DNS is polluted (e.g. by a VPN client that returns fake IPs for certain domains). Tools like [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) intercept traffic at the kernel level and send already-resolved IP addresses — not domain names — to the SOCKS5 proxy. The proxy connects to the fake IP and fails.
+
+**Solution**: Pantyhose intercepts HTTPS connections (port 443 by default) and reads the TLS ClientHello to extract the SNI (Server Name Indication) hostname. It then re-resolves that hostname using the proxy machine's local DNS (which returns correct IPs) and connects to the correct destination.
 
 **How it works**:
 ```
@@ -108,7 +110,7 @@ Flags:
 5. Pantyhose connects to:  142.251.10.91:443 ✓
 ```
 
-**When to use**: When the client machine uses a VPN client (e.g. CorpLink) that runs a local DNS proxy returning polluted/fake IPs for certain domains, and you cannot change the client's DNS settings.
+**`--no-sni-remap`**: Disables SNI remap entirely. Use this if you don't have DNS pollution issues and want a plain SOCKS5 proxy.
 
 **Limitation**: Only works for TLS traffic since it relies on TLS SNI. Non-TLS traffic is handled gracefully (falls back to direct connection).
 
@@ -116,21 +118,16 @@ By default only port 443 is intercepted. Use `--sni-ports` to add custom ports:
 
 ```bash
 # Also sniff SNI on ports 8443 and 4443
-pantyhose.exe --no-ipv6 --sni-remap --sni-ports 443,8443,4443
+pantyhose.exe --sni-ports 443,8443,4443
 ```
 
-### Combining Flags
+### Default Configuration
 
-For cross-network proxying with a VPN client that pollutes DNS:
-
-```bash
-pantyhose.exe --no-ipv6 --sni-remap
-```
-
-This is the **recommended configuration** for the typical use case where:
-- The proxy machine is on a corporate network with IPv4-only internet
-- The client machine connects via VPN with a DNS-polluting VPN client
-- You want to route all client traffic through the corporate network
+Just running `pantyhose.exe` with no flags gives you the **recommended configuration**:
+- SNI remap enabled (fixes DNS pollution)
+- IPv6 auto-detected (disabled if unavailable)
+- Listening on `0.0.0.0:1080`
+- No authentication
 
 ## Client Setup
 
@@ -146,7 +143,7 @@ This is the **recommended configuration** for the typical use case where:
 3. Set default rule to **Proxy** to route all traffic
 4. Exclude the VPN client process from proxying to avoid loops
 
-**Important**: When using ProxyBridge with `--sni-remap`, also disable IPv6 on the client machine if possible. This prevents the client from resolving domains to IPv6 addresses that the proxy can't reach:
+**Tip**: Disabling IPv6 on the client machine can further reduce DNS pollution issues:
 
 ```powershell
 # Windows client
@@ -193,13 +190,13 @@ Replace `1080` with your actual port if different. **Both rules are required** �
 ```
 dial tcp [2404:6800:4012:6::200e]:443: connectex: A connection attempt failed...
 ```
-The proxy machine has no IPv6 connectivity. Add `--no-ipv6` flag.
+The proxy machine has no IPv6 connectivity. This should be auto-detected at startup. If not, the default behavior already disables IPv6. Check startup logs for "IPv6 not available" or "IPv6 available but disabled".
 
 ### DNS pollution (wrong IPs, sites fail that work on proxy machine)
 ```
 dial tcp4 185.45.5.35:443: connectex: A connection attempt failed...
 ```
-The client's DNS returns fake IPs. Add `--sni-remap` flag. Verify by comparing DNS results:
+The client's DNS returns fake IPs. SNI remap is enabled by default and should handle this. Verify by comparing DNS results:
 ```bash
 # On client machine
 nslookup www.youtube.com
@@ -212,7 +209,7 @@ If they return different IPs, DNS pollution is the cause.
 UDP firewall rule is missing. Add the UDP rule (see Firewall section).
 
 ### Some sites work on proxy machine but not through proxy
-- If those sites use HTTPS: ensure `--sni-remap` is enabled
+- If those sites use HTTPS: ensure SNI remap is active (enabled by default, check logs for "SNI remap enabled")
 - If those sites use HTTP only: the client's DNS returns a fake IP and there's no SNI to extract. Consider adding the correct IP to the client's `/etc/hosts`
 
 ## Testing

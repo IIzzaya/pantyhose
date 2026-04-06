@@ -70,8 +70,8 @@ func main() {
 	pass := flag.String("pass", "", "Password for SOCKS5 auth (no auth if empty)")
 	tcpTimeout := flag.Int("tcp-timeout", 60, "TCP connection idle timeout in seconds")
 	udpTimeout := flag.Int("udp-timeout", 60, "UDP session timeout in seconds")
-	noIPv6 := flag.Bool("no-ipv6", false, "Reject IPv6 destinations and force IPv4-only outbound")
-	sniRemap := flag.Bool("sni-remap", false, "Sniff TLS SNI and re-resolve hostnames via local DNS (fixes client-side DNS pollution)")
+	enableIPv6 := flag.Bool("enable-ipv6", false, "Allow IPv6 outbound connections (default: IPv6 auto-disabled if unavailable)")
+	noSNIRemap := flag.Bool("no-sni-remap", false, "Disable TLS SNI hostname re-resolution (SNI remap is enabled by default)")
 	sniPorts := flag.String("sni-ports", "443", "Comma-separated list of ports to apply SNI remap (default: 443)")
 	verboseFlag := flag.Bool("verbose", false, "Enable verbose logging (SNI remap details, connection info)")
 	fwClean := flag.Bool("fw-clean", false, "Print commands to remove firewall rules for the listen port and exit (does not start server)")
@@ -113,15 +113,22 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *noIPv6 {
+	ipv4Only := false
+	drops := []string{"169.254.169.254"}
+	if *enableIPv6 {
+		log.Println("IPv6 enabled: outbound connections may use IPv6")
+	} else if probeIPv6() {
 		installIPv4OnlyDialers()
-		log.SetOutput(&logFilter{out: os.Stderr, drops: []string{errIPv6Disabled.Error()}})
-		log.Println("IPv6 disabled: all outbound connections forced to IPv4")
-	} else if !probeIPv6() {
+		ipv4Only = true
+		drops = append(drops, errIPv6Disabled.Error())
+		log.Println("IPv6 available but disabled by default (use --enable-ipv6 to allow)")
+	} else {
 		installIPv4OnlyDialers()
-		log.SetOutput(&logFilter{out: os.Stderr, drops: []string{errIPv6Disabled.Error()}})
-		log.Println("IPv6 not available (auto-detected): all outbound connections forced to IPv4")
+		ipv4Only = true
+		drops = append(drops, errIPv6Disabled.Error())
+		log.Println("IPv6 not available: all outbound connections forced to IPv4")
 	}
+	log.SetOutput(&logFilter{out: os.Stderr, drops: drops})
 
 	outboundIP := *ip
 	if outboundIP == "" {
@@ -157,20 +164,24 @@ func main() {
 		}
 	}()
 
-	var handler socks5.Handler
-	if *sniRemap {
+	var inner socks5.Handler
+	if !*noSNIRemap {
 		ports, err := parsePorts(*sniPorts)
 		if err != nil {
 			log.Fatalf("Invalid --sni-ports: %v", err)
 		}
-		handler = &SNIRemapHandler{
+		inner = &SNIRemapHandler{
 			TCPTimeout: *tcpTimeout,
 			UDPTimeout: *udpTimeout,
-			IPv4Only:   *noIPv6,
+			IPv4Only:   ipv4Only,
 			Ports:      ports,
 		}
 		log.Printf("SNI remap enabled on ports: %s", *sniPorts)
+	} else {
+		inner = &socks5.DefaultHandle{}
+		log.Println("SNI remap disabled")
 	}
+	handler := &connLogger{inner: inner}
 
 	log.Printf("SOCKS5 server listening on %s (TCP + UDP)", listenAddr)
 	green := "\033[1;32m"
@@ -294,8 +305,8 @@ func printHelpCN() {
   --pass string        SOCKS5 认证密码（留空则不启用认证）
   --tcp-timeout int    TCP 连接空闲超时，单位秒 (默认 60)
   --udp-timeout int    UDP 会话超时，单位秒 (默认 60)
-  --no-ipv6            拒绝 IPv6 目标地址，强制所有出站连接使用 IPv4
-  --sni-remap          嗅探 TLS SNI 并通过本地 DNS 重新解析域名（修复客户端 DNS 污染）
+  --enable-ipv6        允许 IPv6 出站连接（默认自动检测，不可用时禁用）
+  --no-sni-remap       禁用 TLS SNI 域名重解析（默认启用 SNI remap）
   --sni-ports string   应用 SNI remap 的端口列表，逗号分隔 (默认 "443")
   --verbose            启用详细日志（SNI remap 细节、连接生命周期等）
   --fw-clean           输出删除防火墙规则的命令后退出（不启动服务）
@@ -303,12 +314,36 @@ func printHelpCN() {
   --version            显示版本号后退出
 
 示例:
-  pantyhose.exe                                    # 默认配置启动
+  pantyhose.exe                                    # 默认配置启动（SNI remap 开启，IPv6 自动检测）
   pantyhose.exe --port 8899                        # 监听 8899 端口
-  pantyhose.exe --no-ipv6 --sni-remap              # 推荐：禁用 IPv6 + SNI 重映射
+  pantyhose.exe --enable-ipv6                      # 允许 IPv6 出站连接
+  pantyhose.exe --no-sni-remap                     # 禁用 SNI 域名重映射
   pantyhose.exe --user admin --pass secret         # 启用用户名密码认证
   pantyhose.exe --fw-clean --port 8899             # 输出清理 8899 端口防火墙规则的命令
 `, version)
+}
+
+type connLogger struct {
+	inner socks5.Handler
+}
+
+func (cl *connLogger) TCPHandle(s *socks5.Server, c *net.TCPConn, r *socks5.Request) error {
+	client := c.RemoteAddr().String()
+	dest := r.Address()
+	log.Printf("CONNECT %s -> %s", client, dest)
+	start := time.Now()
+	err := cl.inner.TCPHandle(s, c, r)
+	elapsed := time.Since(start).Truncate(time.Second)
+	if err != nil {
+		log.Printf("DISCONNECT %s -> %s (%s, error: %v)", client, dest, elapsed, err)
+	} else {
+		log.Printf("DISCONNECT %s -> %s (%s)", client, dest, elapsed)
+	}
+	return nil
+}
+
+func (cl *connLogger) UDPHandle(s *socks5.Server, addr *net.UDPAddr, d *socks5.Datagram) error {
+	return cl.inner.UDPHandle(s, addr, d)
 }
 
 func isShutdownError(err error) bool {

@@ -11,11 +11,11 @@ The primary use case is cross-network proxying:
 - **Proxy machine** (Windows): Sits on a corporate network with a dedicated internet line (can access YouTube, Google, etc. directly). Runs `pantyhose.exe`.
 - **Client machine** (macOS/Linux/Windows): Connects to the corporate network via VPN (e.g. CorpLink). Uses [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) or Proxifier to route all traffic through pantyhose.
 
-**Key challenge**: The client's VPN client (CorpLink) runs a local DNS proxy on `127.0.0.1:53` that returns polluted/fake IPs for certain domains (e.g. YouTube → fake IP). ProxyBridge intercepts traffic at the kernel level and sends already-resolved IPs to the SOCKS5 proxy, not domain names. The `--sni-remap` flag solves this by extracting the real hostname from TLS ClientHello and re-resolving it via the proxy machine's corporate DNS.
+**Key challenge**: The client's VPN client (CorpLink) runs a local DNS proxy on `127.0.0.1:53` that returns polluted/fake IPs for certain domains (e.g. YouTube → fake IP). ProxyBridge intercepts traffic at the kernel level and sends already-resolved IPs to the SOCKS5 proxy, not domain names. SNI remap (enabled by default) solves this by extracting the real hostname from TLS ClientHello and re-resolving it via the proxy machine's corporate DNS.
 
-**Recommended startup command**:
+**Recommended startup command** (defaults are sufficient for most cases):
 ```bash
-pantyhose.exe --no-ipv6 --sni-remap
+pantyhose.exe
 ```
 
 ## Architecture
@@ -24,14 +24,14 @@ pantyhose.exe --no-ipv6 --sni-remap
 - **Library**: `github.com/txthinking/socks5` provides the SOCKS5 protocol implementation
 - **Protocol**: SOCKS5 with CONNECT (TCP) and UDP ASSOCIATE support
 - **Auth**: Runtime switchable — no-auth (default) or username/password (RFC 1929)
-- **SNI Remap**: Optional TLS SNI sniffing to fix client-side DNS pollution — extracts hostname from ClientHello and re-resolves via local DNS
-- **IPv4-only mode**: Optional `--no-ipv6` to reject IPv6 destinations and force IPv4 outbound
+- **SNI Remap**: TLS SNI sniffing enabled by default to fix client-side DNS pollution — extracts hostname from ClientHello and re-resolves via local DNS. Disable with `--no-sni-remap`
+- **IPv4-only mode**: IPv6 auto-detected at startup; if unavailable, IPv4-only mode is enabled automatically. Use `--enable-ipv6` to force IPv6 support
 
 ## Key Design Decisions
 
 1. All configuration via CLI flags, no config files
 2. Outbound IP auto-detected via `net.Dial("udp", "8.8.8.8:53")`, overridable with `--ip`
-3. `NewClassicServer` + `DefaultHandle` (nil handler) for standard proxy behavior; `SNIRemapHandler` when `--sni-remap` is enabled
+3. `NewClassicServer` + `SNIRemapHandler` by default; `DefaultHandle` when `--no-sni-remap` is specified
 4. Firewall warning printed at startup (does not auto-modify system settings)
 5. Graceful shutdown via OS signal capture + `Server.Shutdown()`
 6. IPv4-only dialers override `socks5.DialTCP` / `socks5.DialUDP` package-level variables
@@ -45,11 +45,11 @@ go build -o pantyhose.exe .
 # Run tests (unit + integration)
 go test -v -count=1 -timeout 60s ./...
 
-# Run the server (recommended for cross-network proxying)
-./pantyhose.exe --no-ipv6 --sni-remap
+# Run the server (default: SNI remap on, IPv6 auto-detected)
+./pantyhose.exe
 
 # Run the server (with auth)
-./pantyhose.exe --no-ipv6 --sni-remap --user admin --pass secret
+./pantyhose.exe --user admin --pass secret
 
 # Run the server on a custom port
 ./pantyhose.exe --port 8899
@@ -97,9 +97,9 @@ go test -v -count=1 -timeout 60s ./...
 | `--pass` | _(empty)_ | SOCKS5 password (no auth if empty) |
 | `--tcp-timeout` | `60` | TCP idle timeout (seconds) |
 | `--udp-timeout` | `60` | UDP session timeout (seconds) |
-| `--no-ipv6` | `false` | Reject IPv6 destinations, force `tcp4`/`udp4` outbound. Overrides `socks5.DialTCP` and `socks5.DialUDP` package-level vars. |
-| `--sni-remap` | `false` | Enable `SNIRemapHandler`: for TLS connections on configured ports, read TLS ClientHello, extract SNI hostname, re-resolve via local DNS, connect to correct IP. Other traffic delegated to `DefaultHandle`. |
-| `--sni-ports` | `"443"` | Comma-separated list of ports to apply SNI remap. Only used when `--sni-remap` is enabled. Parsed by `parsePorts()` into `map[uint16]bool` and stored in `SNIRemapHandler.Ports`. |
+| `--enable-ipv6` | `false` | Allow IPv6 outbound. By default IPv6 is auto-detected and disabled if unavailable. Overrides `socks5.DialTCP` and `socks5.DialUDP` package-level vars when IPv4-only. |
+| `--no-sni-remap` | `false` | Disable `SNIRemapHandler`. SNI remap is enabled by default: for TLS connections on configured ports, read TLS ClientHello, extract SNI hostname, re-resolve via local DNS, connect to correct IP. Other traffic delegated to `DefaultHandle`. |
+| `--sni-ports` | `"443"` | Comma-separated list of ports to apply SNI remap. Only used when SNI remap is active (not disabled by `--no-sni-remap`). Parsed by `parsePorts()` into `map[uint16]bool` and stored in `SNIRemapHandler.Ports`. |
 | `--verbose` | `false` | Enable verbose logging: SNI passthrough details, DNS resolution results, connection lifecycle. Without this, only actual IP remaps and errors are logged. |
 | `--version` | — | Print version and exit |
 
