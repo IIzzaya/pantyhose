@@ -28,7 +28,8 @@ func debugf(format string, args ...any) {
 }
 
 func main() {
-	addr := flag.String("addr", "0.0.0.0:1080", "Listen address (host:port)")
+	addr := flag.String("addr", "0.0.0.0", "Listen address (IP or host:port; use --port to set port separately)")
+	port := flag.Int("port", 1080, "Listen port (combined with --addr)")
 	ip := flag.String("ip", "", "Outbound IP for UDP ASSOCIATE replies (auto-detected if empty)")
 	user := flag.String("user", "", "Username for SOCKS5 auth (no auth if empty)")
 	pass := flag.String("pass", "", "Password for SOCKS5 auth (no auth if empty)")
@@ -46,6 +47,21 @@ func main() {
 	if *showVersion {
 		fmt.Printf("pantyhose %s\n", version)
 		os.Exit(0)
+	}
+
+	if *port < 1 || *port > 65535 {
+		log.Fatalf("Invalid port %d: must be 1-65535", *port)
+	}
+
+	// Build listen address: if --addr already contains a port, use it as-is;
+	// otherwise combine --addr and --port.
+	listenAddr := *addr
+	if _, _, err := net.SplitHostPort(listenAddr); err != nil {
+		listenAddr = net.JoinHostPort(listenAddr, strconv.Itoa(*port))
+	}
+	portStr := strconv.Itoa(*port)
+	if _, p, err := net.SplitHostPort(listenAddr); err == nil {
+		portStr = p
 	}
 
 	if *noIPv6 {
@@ -69,14 +85,9 @@ func main() {
 	}
 	log.Printf("Auth mode: %s", authMode)
 
-	_, port, err := net.SplitHostPort(*addr)
-	if err != nil {
-		log.Fatalf("Invalid listen address %q: %v", *addr, err)
-	}
+	go checkFirewall(portStr)
 
-	go checkFirewall(port)
-
-	server, err := socks5.NewClassicServer(*addr, outboundIP, *user, *pass, *tcpTimeout, *udpTimeout)
+	server, err := socks5.NewClassicServer(listenAddr, outboundIP, *user, *pass, *tcpTimeout, *udpTimeout)
 	if err != nil {
 		log.Fatalf("Failed to create SOCKS5 server: %v", err)
 	}
@@ -107,7 +118,7 @@ func main() {
 		log.Printf("SNI remap enabled on ports: %s", *sniPorts)
 	}
 
-	log.Printf("SOCKS5 server listening on %s (TCP + UDP)", *addr)
+	log.Printf("SOCKS5 server listening on %s (TCP + UDP)", listenAddr)
 
 	if err := server.ListenAndServe(handler); err != nil {
 		if isShutdownError(err) {

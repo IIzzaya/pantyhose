@@ -33,8 +33,11 @@ pantyhose.exe --no-ipv6 --sni-remap
 # With authentication
 pantyhose.exe --no-ipv6 --sni-remap --user admin --pass secret
 
+# Custom port
+pantyhose.exe --port 8899 --no-ipv6 --sni-remap
+
 # Custom address and port
-pantyhose.exe --addr 0.0.0.0:9090 --no-ipv6 --sni-remap
+pantyhose.exe --addr 0.0.0.0 --port 9090 --no-ipv6 --sni-remap
 ```
 
 ## Installation
@@ -61,7 +64,8 @@ GOOS=linux GOARCH=amd64 go build -o pantyhose .
 pantyhose.exe [flags]
 
 Flags:
-  --addr string        Listen address (default "0.0.0.0:1080")
+  --addr string        Listen address (default "0.0.0.0")
+  --port int           Listen port (default 1080)
   --ip string          Outbound IP for UDP replies (auto-detected if empty)
   --user string        Username for SOCKS5 auth (no auth if empty)
   --pass string        Password for SOCKS5 auth (no auth if empty)

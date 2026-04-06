@@ -51,8 +51,11 @@ go test -v -count=1 -timeout 60s ./...
 # Run the server (with auth)
 ./pantyhose.exe --no-ipv6 --sni-remap --user admin --pass secret
 
-# Run the server (basic, no special handling)
-./pantyhose.exe --addr 0.0.0.0:1080
+# Run the server on a custom port
+./pantyhose.exe --port 8899
+
+# Run the server (basic, custom addr)
+./pantyhose.exe --addr 0.0.0.0 --port 9090
 ```
 
 ## File Structure
@@ -87,7 +90,8 @@ go test -v -count=1 -timeout 60s ./...
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--addr` | `0.0.0.0:1080` | Listen address |
+| `--addr` | `0.0.0.0` | Listen address (IP or host:port) |
+| `--port` | `1080` | Listen port (combined with `--addr`) |
 | `--ip` | auto-detected | Outbound IP for UDP ASSOCIATE replies |
 | `--user` | _(empty)_ | SOCKS5 username (no auth if empty) |
 | `--pass` | _(empty)_ | SOCKS5 password (no auth if empty) |
