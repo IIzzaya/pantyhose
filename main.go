@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -33,6 +34,7 @@ func main() {
 	udpTimeout := flag.Int("udp-timeout", 60, "UDP session timeout in seconds")
 	noIPv6 := flag.Bool("no-ipv6", false, "Reject IPv6 destinations and force IPv4-only outbound")
 	sniRemap := flag.Bool("sni-remap", false, "Sniff TLS SNI and re-resolve hostnames via local DNS (fixes client-side DNS pollution)")
+	sniPorts := flag.String("sni-ports", "443", "Comma-separated list of ports to apply SNI remap (default: 443)")
 	verboseFlag := flag.Bool("verbose", false, "Enable verbose logging (SNI remap details, connection info)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
@@ -90,12 +92,17 @@ func main() {
 
 	var handler socks5.Handler
 	if *sniRemap {
+		ports, err := parsePorts(*sniPorts)
+		if err != nil {
+			log.Fatalf("Invalid --sni-ports: %v", err)
+		}
 		handler = &SNIRemapHandler{
 			TCPTimeout: *tcpTimeout,
 			UDPTimeout: *udpTimeout,
 			IPv4Only:   *noIPv6,
+			Ports:      ports,
 		}
-		log.Println("SNI remap enabled: HTTPS connections will be re-resolved via local DNS")
+		log.Printf("SNI remap enabled on ports: %s", *sniPorts)
 	}
 
 	log.Printf("SOCKS5 server listening on %s (TCP + UDP)", *addr)
@@ -160,6 +167,25 @@ func isShutdownError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "use of closed network connection") ||
 		strings.Contains(msg, "server closed")
+}
+
+func parsePorts(s string) (map[uint16]bool, error) {
+	ports := make(map[uint16]bool)
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 || n > 65535 {
+			return nil, fmt.Errorf("invalid port %q", p)
+		}
+		ports[uint16(n)] = true
+	}
+	if len(ports) == 0 {
+		return nil, fmt.Errorf("no valid ports specified")
+	}
+	return ports, nil
 }
 
 var errIPv6Disabled = fmt.Errorf("IPv6 destination rejected (--no-ipv6 is enabled)")

@@ -19,12 +19,13 @@ type SNIRemapHandler struct {
 	TCPTimeout int
 	UDPTimeout int
 	IPv4Only   bool
+	Ports      map[uint16]bool
 }
 
 func (h *SNIRemapHandler) TCPHandle(s *socks5.Server, c *net.TCPConn, r *socks5.Request) error {
 	if r.Cmd == socks5.CmdConnect {
 		destPort := binary.BigEndian.Uint16(r.DstPort)
-		if destPort == 443 {
+		if h.Ports[destPort] {
 			return h.handleTLSWithSNI(s, c, r, destPort)
 		}
 		return (&socks5.DefaultHandle{}).TCPHandle(s, c, r)

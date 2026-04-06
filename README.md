@@ -69,6 +69,7 @@ Flags:
   --udp-timeout int    UDP session timeout in seconds (default 60)
   --no-ipv6            Reject IPv6 destinations, force IPv4-only outbound
   --sni-remap          Sniff TLS SNI and re-resolve hostnames via local DNS
+  --sni-ports string   Comma-separated ports for SNI remap (default "443")
   --verbose            Enable verbose logging (SNI details, connection lifecycle)
   --version            Print version and exit
 ```
@@ -105,7 +106,14 @@ Flags:
 
 **When to use**: When the client machine uses a VPN client (e.g. CorpLink) that runs a local DNS proxy returning polluted/fake IPs for certain domains, and you cannot change the client's DNS settings.
 
-**Limitation**: Only works for HTTPS traffic (port 443) since it relies on TLS SNI. Non-TLS traffic on port 443 is handled gracefully (falls back to direct connection). HTTP and other non-443 traffic uses the default handler without SNI sniffing.
+**Limitation**: Only works for TLS traffic since it relies on TLS SNI. Non-TLS traffic is handled gracefully (falls back to direct connection).
+
+By default only port 443 is intercepted. Use `--sni-ports` to add custom ports:
+
+```bash
+# Also sniff SNI on ports 8443 and 4443
+pantyhose.exe --no-ipv6 --sni-remap --sni-ports 443,8443,4443
+```
 
 ### Combining Flags
 
