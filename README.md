@@ -136,12 +136,14 @@ Just running `pantyhose.exe` with no flags gives you the **recommended configura
 [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) is a cross-platform Proxifier alternative that intercepts all TCP/UDP traffic at the kernel level.
 
 1. Install ProxyBridge on the client machine (macOS/Windows/Linux)
-2. Configure proxy:
-   - Type: **SOCKS5**
-   - Address: `<pantyhose machine IP>` (e.g. `10.154.38.77`)
-   - Port: `1080` (or your custom port)
-3. Set default rule to **Proxy** to route all traffic
-4. Exclude the VPN client process from proxying to avoid loops
+
+2. **Proxy Settings**: Go to **Proxy > Proxy Settings...** in the menu bar. Set **Proxy IP/Domain** to the LAN IP of the machine running pantyhose (e.g. `10.154.38.77`), and set **Proxy Port** to the pantyhose listen port (default `1080`).
+
+![ProxyBridge Proxy Settings](proxy-bridge-pic-1.png)
+
+3. **Proxy Rules**: Go to **Proxy > Proxy Rules...** to configure routing rules. VPN-related processes and addresses (e.g. `corplink-service`, `Lark Helper`, `Feishu`, `169.254.169.254`, `172.19.10.252`) should be set to **BOTH** protocol and **DIRECT** action to bypass the proxy. All other traffic should go through the proxy.
+
+![ProxyBridge Proxy Rules](proxy-bridge-pic-2.png)
 
 **Tip**: Disabling IPv6 on the client machine can further reduce DNS pollution issues:
 
