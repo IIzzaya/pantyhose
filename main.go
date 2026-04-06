@@ -318,7 +318,7 @@ func parsePorts(s string) (map[uint16]bool, error) {
 	return ports, nil
 }
 
-var errIPv6Disabled = fmt.Errorf("IPv6 destination rejected (--no-ipv6 is enabled)")
+var errIPv6Disabled = fmt.Errorf("IPv6 rejected")
 
 func isIPv6Addr(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
@@ -342,6 +342,7 @@ func probeIPv6() bool {
 func installIPv4OnlyDialers() {
 	socks5.DialTCP = func(network, laddr, raddr string) (net.Conn, error) {
 		if isIPv6Addr(raddr) {
+			debugf("IPv6 destination rejected: %s", raddr)
 			return nil, errIPv6Disabled
 		}
 		var la *net.TCPAddr
@@ -361,6 +362,7 @@ func installIPv4OnlyDialers() {
 
 	socks5.DialUDP = func(network, laddr, raddr string) (net.Conn, error) {
 		if isIPv6Addr(raddr) {
+			debugf("IPv6 destination rejected: %s", raddr)
 			return nil, errIPv6Disabled
 		}
 		var la *net.UDPAddr
