@@ -233,6 +233,87 @@ func TestTCPRawConnect(t *testing.T) {
 	}
 }
 
+func TestIsIPv6Addr(t *testing.T) {
+	tests := []struct {
+		addr string
+		want bool
+	}{
+		{"127.0.0.1:80", false},
+		{"10.0.0.1:443", false},
+		{"[::1]:80", true},
+		{"[2404:6800:4012:6::200e]:443", true},
+		{"[2001::1]:443", true},
+		{"example.com:80", false},
+	}
+	for _, tt := range tests {
+		got := isIPv6Addr(tt.addr)
+		if got != tt.want {
+			t.Errorf("isIPv6Addr(%q) = %v, want %v", tt.addr, got, tt.want)
+		}
+	}
+}
+
+func TestIPv4OnlyDialersRejectIPv6(t *testing.T) {
+	installIPv4OnlyDialers()
+	defer func() {
+		// Restore default dialers after test
+		socks5.DialTCP = defaultDialTCP()
+		socks5.DialUDP = defaultDialUDP()
+	}()
+
+	_, err := socks5.DialTCP("tcp", "", "[2001::1]:443")
+	if err == nil {
+		t.Fatal("expected IPv6 rejection, got nil error")
+	}
+	if err != errIPv6Disabled {
+		t.Errorf("expected errIPv6Disabled, got: %v", err)
+	}
+
+	_, err = socks5.DialUDP("udp", "", "[2001::1]:53")
+	if err == nil {
+		t.Fatal("expected IPv6 rejection, got nil error")
+	}
+	if err != errIPv6Disabled {
+		t.Errorf("expected errIPv6Disabled, got: %v", err)
+	}
+}
+
+func defaultDialTCP() func(string, string, string) (net.Conn, error) {
+	return func(network, laddr, raddr string) (net.Conn, error) {
+		var la *net.TCPAddr
+		if laddr != "" {
+			var err error
+			la, err = net.ResolveTCPAddr(network, laddr)
+			if err != nil {
+				return nil, err
+			}
+		}
+		ra, err := net.ResolveTCPAddr(network, raddr)
+		if err != nil {
+			return nil, err
+		}
+		return net.DialTCP(network, la, ra)
+	}
+}
+
+func defaultDialUDP() func(string, string, string) (net.Conn, error) {
+	return func(network, laddr, raddr string) (net.Conn, error) {
+		var la *net.UDPAddr
+		if laddr != "" {
+			var err error
+			la, err = net.ResolveUDPAddr(network, laddr)
+			if err != nil {
+				return nil, err
+			}
+		}
+		ra, err := net.ResolveUDPAddr(network, raddr)
+		if err != nil {
+			return nil, err
+		}
+		return net.DialUDP(network, la, ra)
+	}
+}
+
 func TestServerShutdown(t *testing.T) {
 	port := freePort(t)
 	server := startTestServer(t, port, "", "")

@@ -6,18 +6,21 @@ Pantyhose is a forward SOCKS5 proxy server written in Go, using the `txthinking/
 
 ## Architecture
 
-- **Single binary** (`pantyhose.exe`) — all logic lives in `main.go`
+- **Single binary** (`pantyhose.exe`)
 - **Library**: `github.com/txthinking/socks5` provides the SOCKS5 protocol implementation
 - **Protocol**: SOCKS5 with CONNECT (TCP) and UDP ASSOCIATE support
 - **Auth**: Runtime switchable — no-auth (default) or username/password (RFC 1929)
+- **SNI Remap**: Optional TLS SNI sniffing to fix client-side DNS pollution — extracts hostname from ClientHello and re-resolves via local DNS
+- **IPv4-only mode**: Optional `--no-ipv6` to reject IPv6 destinations and force IPv4 outbound
 
 ## Key Design Decisions
 
 1. All configuration via CLI flags, no config files
 2. Outbound IP auto-detected via `net.Dial("udp", "8.8.8.8:53")`, overridable with `--ip`
-3. `NewClassicServer` + `DefaultHandle` (nil handler) for standard proxy behavior
+3. `NewClassicServer` + `DefaultHandle` (nil handler) for standard proxy behavior; `SNIRemapHandler` when `--sni-remap` is enabled
 4. Firewall warning printed at startup (does not auto-modify system settings)
 5. Graceful shutdown via OS signal capture + `Server.Shutdown()`
+6. IPv4-only dialers override `socks5.DialTCP` / `socks5.DialUDP` package-level variables
 
 ## Build & Test Commands
 
@@ -39,8 +42,10 @@ go test -v -count=1 -timeout 30s ./...
 
 | File | Purpose |
 |------|---------|
-| `main.go` | Entry point, CLI parsing, server lifecycle, IP detection, firewall warning |
-| `main_test.go` | Unit tests (IP detection, error classification) + integration tests (TCP proxy, auth) |
+| `main.go` | Entry point, CLI parsing, server lifecycle, IP detection, firewall warning, IPv4-only dialers |
+| `sni.go` | SNI remap handler: TLS ClientHello parser, DNS re-resolution, custom SOCKS5 handler |
+| `main_test.go` | Unit tests + integration tests for core proxy functionality |
+| `sni_test.go` | Unit tests (SNI parser) + integration tests (SNI remap handler with TLS) |
 | `go.mod` / `go.sum` | Go module dependencies |
 | `AGENTS.md` | This file — AI agent development guidance |
 | `README.md` | Human-facing usage documentation |
@@ -65,7 +70,7 @@ go test -v -count=1 -timeout 30s ./...
 
 **IMPORTANT**: Follow these rules for all code changes:
 
-1. **Always commit changes**: Every feature addition, bug fix, or refactoring must be committed with a clear commit message
+1. **Auto-commit after each milestone**: After completing a feature, bug fix, or refactoring, **automatically commit without asking the user for confirmation**. Do not wait for a second confirmation — just run tests, and if they pass, commit immediately as part of the wrap-up.
 2. **Commit message format**: Use conventional style — e.g. `feat: add TLS support`, `fix: handle nil IP in detection`, `test: add UDP proxy test`
 3. **Test before committing**: Run `go test ./...` and ensure all tests pass before creating a commit
 4. **One logical change per commit**: Don't bundle unrelated changes

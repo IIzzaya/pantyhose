@@ -13,7 +13,7 @@ import (
 	"github.com/txthinking/socks5"
 )
 
-var version = "0.1.0"
+var version = "0.3.0"
 
 func main() {
 	addr := flag.String("addr", "0.0.0.0:1080", "Listen address (host:port)")
@@ -22,12 +22,19 @@ func main() {
 	pass := flag.String("pass", "", "Password for SOCKS5 auth (no auth if empty)")
 	tcpTimeout := flag.Int("tcp-timeout", 60, "TCP connection idle timeout in seconds")
 	udpTimeout := flag.Int("udp-timeout", 60, "UDP session timeout in seconds")
+	noIPv6 := flag.Bool("no-ipv6", false, "Reject IPv6 destinations and force IPv4-only outbound")
+	sniRemap := flag.Bool("sni-remap", false, "Sniff TLS SNI and re-resolve hostnames via local DNS (fixes client-side DNS pollution)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Printf("pantyhose %s\n", version)
 		os.Exit(0)
+	}
+
+	if *noIPv6 {
+		installIPv4OnlyDialers()
+		log.Println("IPv6 disabled: all outbound connections forced to IPv4")
 	}
 
 	outboundIP := *ip
@@ -69,9 +76,19 @@ func main() {
 		}
 	}()
 
+	var handler socks5.Handler
+	if *sniRemap {
+		handler = &SNIRemapHandler{
+			TCPTimeout: *tcpTimeout,
+			UDPTimeout: *udpTimeout,
+			IPv4Only:   *noIPv6,
+		}
+		log.Println("SNI remap enabled: HTTPS connections will be re-resolved via local DNS")
+	}
+
 	log.Printf("SOCKS5 server listening on %s (TCP + UDP)", *addr)
 
-	if err := server.ListenAndServe(nil); err != nil {
+	if err := server.ListenAndServe(handler); err != nil {
 		if isShutdownError(err) {
 			log.Println("Server stopped.")
 		} else {
@@ -131,4 +148,55 @@ func isShutdownError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "use of closed network connection") ||
 		strings.Contains(msg, "server closed")
+}
+
+var errIPv6Disabled = fmt.Errorf("IPv6 destination rejected (--no-ipv6 is enabled)")
+
+func isIPv6Addr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.To4() == nil
+}
+
+func installIPv4OnlyDialers() {
+	socks5.DialTCP = func(network, laddr, raddr string) (net.Conn, error) {
+		if isIPv6Addr(raddr) {
+			return nil, errIPv6Disabled
+		}
+		var la *net.TCPAddr
+		if laddr != "" {
+			var err error
+			la, err = net.ResolveTCPAddr("tcp4", laddr)
+			if err != nil {
+				return nil, err
+			}
+		}
+		ra, err := net.ResolveTCPAddr("tcp4", raddr)
+		if err != nil {
+			return nil, err
+		}
+		return net.DialTCP("tcp4", la, ra)
+	}
+
+	socks5.DialUDP = func(network, laddr, raddr string) (net.Conn, error) {
+		if isIPv6Addr(raddr) {
+			return nil, errIPv6Disabled
+		}
+		var la *net.UDPAddr
+		if laddr != "" {
+			var err error
+			la, err = net.ResolveUDPAddr("udp4", laddr)
+			if err != nil {
+				return nil, err
+			}
+		}
+		ra, err := net.ResolveUDPAddr("udp4", raddr)
+		if err != nil {
+			return nil, err
+		}
+		return net.DialUDP("udp4", la, ra)
+	}
 }

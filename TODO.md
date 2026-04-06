@@ -14,6 +14,11 @@
 - [x] AGENTS.md (AI agent guidance + git workflow)
 - [x] README.md (usage, build, client setup, WSL verification)
 - [x] TODO.md (this file)
+- [x] --no-ipv6 flag: reject IPv6 destinations, force IPv4-only outbound
+- [x] IPv6 address detection and IPv4-only dialer tests
+- [x] --sni-remap flag: TLS SNI sniffing + DNS re-resolution to fix client-side DNS pollution
+- [x] SNI parser unit tests + SNI remap integration tests (TLS + non-TLS passthrough)
+- [x] Suppress noisy "failed to read ClientHello: EOF" logs for aborted connections
 
 ## In Progress
 
@@ -29,3 +34,5 @@ _(none)_
 - [ ] UDP proxy integration tests
 - [ ] Metrics / statistics endpoint
 - [ ] Configuration file support (JSON/YAML) as alternative to CLI flags
+- [ ] HTTP CONNECT proxy support (in addition to SOCKS5)
+- [ ] SNI remap for non-443 TLS ports
