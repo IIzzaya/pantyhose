@@ -2,7 +2,21 @@
 
 ## Project Overview
 
-Pantyhose is a forward SOCKS5 proxy server written in Go, using the `txthinking/socks5` library. It runs on a Windows machine and allows other LAN machines to route TCP/UDP traffic through it (e.g. via Proxifier).
+Pantyhose is a forward SOCKS5 proxy server written in Go, using the `txthinking/socks5` library. It runs on a Windows machine with corporate network access (dedicated line) and allows other machines to route TCP/UDP traffic through it.
+
+## Deployment Scenario
+
+The primary use case is cross-network proxying:
+
+- **Proxy machine** (Windows): Sits on a corporate network with a dedicated internet line (can access YouTube, Google, etc. directly). Runs `pantyhose.exe`.
+- **Client machine** (macOS/Linux/Windows): Connects to the corporate network via VPN (e.g. CorpLink). Uses [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) or Proxifier to route all traffic through pantyhose.
+
+**Key challenge**: The client's VPN client (CorpLink) runs a local DNS proxy on `127.0.0.1:53` that returns polluted/fake IPs for certain domains (e.g. YouTube → fake IP). ProxyBridge intercepts traffic at the kernel level and sends already-resolved IPs to the SOCKS5 proxy, not domain names. The `--sni-remap` flag solves this by extracting the real hostname from TLS ClientHello and re-resolving it via the proxy machine's corporate DNS.
+
+**Recommended startup command**:
+```bash
+pantyhose.exe --no-ipv6 --sni-remap
+```
 
 ## Architecture
 
@@ -29,13 +43,16 @@ Pantyhose is a forward SOCKS5 proxy server written in Go, using the `txthinking/
 go build -o pantyhose.exe .
 
 # Run tests (unit + integration)
-go test -v -count=1 -timeout 30s ./...
+go test -v -count=1 -timeout 60s ./...
 
-# Run the server (no auth)
-./pantyhose.exe --addr 0.0.0.0:1080
+# Run the server (recommended for cross-network proxying)
+./pantyhose.exe --no-ipv6 --sni-remap
 
 # Run the server (with auth)
-./pantyhose.exe --addr 0.0.0.0:1080 --user admin --pass secret
+./pantyhose.exe --no-ipv6 --sni-remap --user admin --pass secret
+
+# Run the server (basic, no special handling)
+./pantyhose.exe --addr 0.0.0.0:1080
 ```
 
 ## File Structure
@@ -61,10 +78,24 @@ go test -v -count=1 -timeout 30s ./...
 
 ## Testing Strategy
 
-- **Unit tests**: Pure logic (IP detection, error classification, flag parsing)
-- **Integration tests**: Start real SOCKS5 server on `127.0.0.1` with random port, verify TCP proxy and auth
-- **E2E tests**: Manual, using WSL `curl --socks5` (documented in README.md)
+- **Unit tests**: Pure logic (IP detection, error classification, SNI parsing, IPv6 detection)
+- **Integration tests**: Start real SOCKS5 server on `127.0.0.1` with random port, verify TCP proxy, auth, SNI remap with TLS, and non-TLS passthrough
+- **E2E tests**: Manual, using WSL `curl --socks5` or from another machine via ProxyBridge (documented in README.md)
 - Always run `go test ./...` before committing
+
+## Flags Reference
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--addr` | `0.0.0.0:1080` | Listen address |
+| `--ip` | auto-detected | Outbound IP for UDP ASSOCIATE replies |
+| `--user` | _(empty)_ | SOCKS5 username (no auth if empty) |
+| `--pass` | _(empty)_ | SOCKS5 password (no auth if empty) |
+| `--tcp-timeout` | `60` | TCP idle timeout (seconds) |
+| `--udp-timeout` | `60` | UDP session timeout (seconds) |
+| `--no-ipv6` | `false` | Reject IPv6 destinations, force `tcp4`/`udp4` outbound. Overrides `socks5.DialTCP` and `socks5.DialUDP` package-level vars. |
+| `--sni-remap` | `false` | Enable `SNIRemapHandler`: for port 443 connections, read TLS ClientHello, extract SNI hostname, re-resolve via local DNS, connect to correct IP. Non-443 traffic delegated to `DefaultHandle`. |
+| `--version` | — | Print version and exit |
 
 ## Git Workflow
 
