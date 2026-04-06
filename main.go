@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/txthinking/socks5"
@@ -99,6 +100,9 @@ func main() {
 	if *noIPv6 {
 		installIPv4OnlyDialers()
 		log.Println("IPv6 disabled: all outbound connections forced to IPv4")
+	} else if !probeIPv6() {
+		installIPv4OnlyDialers()
+		log.Println("IPv6 not available (auto-detected): all outbound connections forced to IPv4")
 	}
 
 	outboundIP := *ip
@@ -323,6 +327,16 @@ func isIPv6Addr(addr string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.To4() == nil
+}
+
+func probeIPv6() bool {
+	conn, err := net.DialTimeout("tcp6", "[2001:4860:4860::8888]:53", 3*time.Second)
+	if err != nil {
+		debugf("IPv6 probe failed: %v", err)
+		return false
+	}
+	conn.Close()
+	return true
 }
 
 func installIPv4OnlyDialers() {
