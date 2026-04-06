@@ -111,7 +111,7 @@ func main() {
 	}
 	log.Printf("Auth mode: %s", authMode)
 
-	go checkFirewall(portStr)
+	checkFirewall(portStr)
 
 	server, err := socks5.NewClassicServer(listenAddr, outboundIP, *user, *pass, *tcpTimeout, *udpTimeout)
 	if err != nil {
@@ -210,13 +210,14 @@ func checkFirewall(port string) {
 
 	red := "\033[1;31m"
 	reset := "\033[0m"
-	fmt.Fprintf(os.Stderr, "%s[ERROR] Firewall may block inbound connections. Run as Administrator:%s\n", red, reset)
+	fmt.Fprintf(os.Stderr, "%s[ERROR] Firewall may block inbound connections. Please run the following commands in an Administrator terminal:%s\n", red, reset)
 	if !tcpOk {
 		fmt.Fprintf(os.Stderr, "%s  netsh advfirewall firewall add rule name=\"pantyhose-tcp\" dir=in action=allow protocol=TCP localport=%s%s\n", red, port, reset)
 	}
 	if !udpOk {
 		fmt.Fprintf(os.Stderr, "%s  netsh advfirewall firewall add rule name=\"pantyhose-udp\" dir=in action=allow protocol=UDP localport=%s%s\n", red, port, reset)
 	}
+	os.Exit(1)
 }
 
 func checkFirewallRules(port string) (tcpOk, udpOk bool) {
