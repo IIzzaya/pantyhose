@@ -59,9 +59,15 @@ func main() {
 	verboseFlag := flag.Bool("verbose", false, "Enable verbose logging (SNI remap details, connection info)")
 	fwClean := flag.Bool("fw-clean", false, "Print commands to remove firewall rules for the listen port and exit (does not start server)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
+	helpCN := flag.Bool("help-cn", false, "Print usage in Chinese and exit")
 	flag.Parse()
 
 	verbose = *verboseFlag
+
+	if *helpCN {
+		printHelpCN()
+		os.Exit(0)
+	}
 
 	if *showVersion {
 		fmt.Printf("pantyhose %s\n", version)
@@ -248,6 +254,36 @@ func checkFirewallRules(port string) (tcpOk, udpOk bool) {
 		}
 	}
 	return
+}
+
+func printHelpCN() {
+	fmt.Printf(`pantyhose %s - SOCKS5 forward proxy server
+
+用法: pantyhose [参数]
+
+参数:
+  --addr string        监听地址，可以是 IP 或 host:port 格式 (默认 "0.0.0.0")
+  --port int           监听端口，与 --addr 组合使用 (默认 1080)
+  --ip string          UDP ASSOCIATE 回复使用的出站 IP（留空则自动检测）
+  --user string        SOCKS5 认证用户名（留空则不启用认证）
+  --pass string        SOCKS5 认证密码（留空则不启用认证）
+  --tcp-timeout int    TCP 连接空闲超时，单位秒 (默认 60)
+  --udp-timeout int    UDP 会话超时，单位秒 (默认 60)
+  --no-ipv6            拒绝 IPv6 目标地址，强制所有出站连接使用 IPv4
+  --sni-remap          嗅探 TLS SNI 并通过本地 DNS 重新解析域名（修复客户端 DNS 污染）
+  --sni-ports string   应用 SNI remap 的端口列表，逗号分隔 (默认 "443")
+  --verbose            启用详细日志（SNI remap 细节、连接生命周期等）
+  --fw-clean           输出删除防火墙规则的命令后退出（不启动服务）
+  --help-cn            显示本中文帮助信息后退出
+  --version            显示版本号后退出
+
+示例:
+  pantyhose.exe                                    # 默认配置启动
+  pantyhose.exe --port 8899                        # 监听 8899 端口
+  pantyhose.exe --no-ipv6 --sni-remap              # 推荐：禁用 IPv6 + SNI 重映射
+  pantyhose.exe --user admin --pass secret         # 启用用户名密码认证
+  pantyhose.exe --fw-clean --port 8899             # 输出清理 8899 端口防火墙规则的命令
+`, version)
 }
 
 func isShutdownError(err error) bool {
