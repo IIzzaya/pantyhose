@@ -117,16 +117,10 @@ func main() {
 	drops := []string{"169.254.169.254"}
 	if *enableIPv6 {
 		log.Println("IPv6 enabled: outbound connections may use IPv6")
-	} else if probeIPv6() {
-		installIPv4OnlyDialers()
-		ipv4Only = true
-		drops = append(drops, errIPv6Disabled.Error())
-		log.Println("IPv6 available but disabled by default (use --enable-ipv6 to allow)")
 	} else {
 		installIPv4OnlyDialers()
 		ipv4Only = true
 		drops = append(drops, errIPv6Disabled.Error())
-		log.Println("IPv6 not available: all outbound connections forced to IPv4")
 	}
 	log.SetOutput(&logFilter{out: os.Stderr, drops: drops})
 
