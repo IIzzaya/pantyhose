@@ -1,5 +1,7 @@
 # Pantyhose
 
+English | [中文](README_ZH.md)
+
 A lightweight SOCKS5 forward proxy server written in Go. Run it on a machine with network access (e.g. a corporate dedicated line), and route another machine's entire network traffic through it using [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge), [Proxifier](https://www.proxifier.com/), or similar tools.
 
 Built with [txthinking/socks5](https://github.com/txthinking/socks5). Supports TCP (CONNECT) and UDP (UDP ASSOCIATE) with optional username/password authentication. TLS SNI-based DNS remapping is enabled by default; IPv6 is auto-detected.
