@@ -112,21 +112,22 @@ go test -v -count=1 -timeout 60s ./...
 
 **IMPORTANT**: Follow these rules for all code changes:
 
-1. **Author & Committer identity**: All AI agent commits **must** set both Author and Committer to the model name with no email. Set environment variables before committing:
+1. **Author & Committer identity**: All AI agent commits **must** set both Author and Committer to `<ModelName>` with no email. Set environment variables before committing:
    ```bash
-   GIT_AUTHOR_NAME="Opus 4.6" GIT_AUTHOR_EMAIL="" GIT_COMMITTER_NAME="Opus 4.6" GIT_COMMITTER_EMAIL="" git commit -m "feat: ..."
+   GIT_AUTHOR_NAME="<ModelName>" GIT_AUTHOR_EMAIL="" GIT_COMMITTER_NAME="<ModelName>" GIT_COMMITTER_EMAIL="" git commit -m "feat: ..."
    ```
    In PowerShell:
    ```powershell
-   $env:GIT_AUTHOR_NAME="Opus 4.6"; $env:GIT_AUTHOR_EMAIL=""; $env:GIT_COMMITTER_NAME="Opus 4.6"; $env:GIT_COMMITTER_EMAIL=""; git commit -m "feat: ..."
+   $env:GIT_AUTHOR_NAME="<ModelName>"; $env:GIT_AUTHOR_EMAIL=""; $env:GIT_COMMITTER_NAME="<ModelName>"; $env:GIT_COMMITTER_EMAIL=""; git commit -m "feat: ..."
    ```
-   **All AI agents (including Claude 4.6 Opus) must use `Opus 4.6` as the unified author/committer name** — this matches the existing commit history. Do **not** use `Claude 4.6 Opus` or any other variant. **Never** include a real email address. Using only `--author` is **insufficient** — it leaves the Committer as the system default.
+   Replace `<ModelName>` with the actual model name (e.g. `Claude Sonnet 3.5`, `Gemini 2.5 Pro`). **Claude Opus 4.6 naming rule**: Any variant of this model name (`Claude Opus 4.6`, `Anthropic: Claude Opus 4.6`, `claude-opus-4.6`, etc.) **must** be unified as `Opus 4.6` to match the existing commit history. **Never** include a real email address. Using only `--author` is **insufficient** — it leaves the Committer as the system default.
 2. **Auto-commit after each milestone**: After completing a feature, bug fix, or refactoring, **automatically commit without asking the user for confirmation**. Do not wait for a second confirmation — just run tests, and if they pass, commit immediately as part of the wrap-up.
 3. **Commit message format**: Use conventional style — e.g. `feat: add TLS support`, `fix: handle nil IP in detection`, `test: add UDP proxy test`
 4. **Test before committing**: Run `go test ./...` and ensure all tests pass before creating a commit
 5. **One logical change per commit**: Don't bundle unrelated changes
 6. **Update TODO.md**: Mark tasks complete and add new tasks as they arise
 7. **Update documentation**: If a change affects usage (new flags, behavior changes), update README.md and AGENTS.md accordingly
+8. **Never push to remote automatically**: After committing, do **not** run `git push`. Pushing to the remote repository is left to the user for manual review, unless the user explicitly asks to push
 
 ## Release Workflow
 
