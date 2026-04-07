@@ -39,6 +39,8 @@ pantyhose.exe --port 8899
 pantyhose.exe --enable-ipv6
 ```
 
+> <sub>**注意**：Windows 息屏（仅关闭显示器）不影响 pantyhose 运行，但系统进入**睡眠或休眠**后进程会被挂起，所有连接断开。如需长期运行，请在 **设置 → 系统 → 电源和睡眠** 中将"睡眠"设置为**从不**（"关闭屏幕"可保留，不影响代理）。</sub>
+
 ## 客户端配置
 
 ### ProxyBridge（推荐）

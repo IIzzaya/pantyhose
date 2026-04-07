@@ -39,6 +39,8 @@ pantyhose.exe --port 8899
 pantyhose.exe --enable-ipv6
 ```
 
+> <sub>**Note**: Pantyhose continues running when Windows turns off the display (screen timeout), but will be **suspended** if the system enters **sleep or hibernation** — all connections will drop. For always-on operation, go to **Settings → System → Power & Sleep** and set "Sleep" to **Never** (you can still let the display turn off — it won't affect the proxy).</sub>
+
 ## Client Setup
 
 ### ProxyBridge (Recommended)
