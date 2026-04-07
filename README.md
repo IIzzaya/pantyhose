@@ -242,6 +242,9 @@ go test -v -count=1 -timeout 60s ./...
 ### Manual Verification via WSL or Another Machine
 
 ```bash
+# Test Network
+curl ipinfo.io/json
+
 # Test TCP proxy (no auth)
 curl --socks5 <host-ip>:1080 http://httpbin.org/ip
 

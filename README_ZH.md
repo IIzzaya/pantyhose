@@ -242,6 +242,9 @@ go test -v -count=1 -timeout 60s ./...
 ### 通过 WSL 或其他机器手动验证
 
 ```bash
+# Test 网络
+curl ipinfo.io/json
+
 # 测试 TCP 代理（无认证）
 curl --socks5 <host-ip>:1080 http://httpbin.org/ip
 
