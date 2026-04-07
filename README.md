@@ -1,108 +1,108 @@
 # Pantyhose
 
-English | [中文](README_ZH.md)
+[English](README_EN.md) | 中文
 
-A lightweight SOCKS5 forward proxy server written in Go. Run it on a machine with network access (e.g. a corporate dedicated line), and route another machine's entire network traffic through it using [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge), [Proxifier](https://www.proxifier.com/), or similar tools.
+一个轻量级 SOCKS5 forward proxy server，使用 Go 编写。在有网络出口的机器上运行（如公司专线 Windows 电脑），让其他机器通过 [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge)、[Proxifier](https://www.proxifier.com/) 等工具将全部网络流量代理过来。
 
-Built with [txthinking/socks5](https://github.com/txthinking/socks5). Supports TCP (CONNECT) and UDP (UDP ASSOCIATE) with optional username/password authentication. TLS SNI remap is enabled by default (fixes DNS pollution caused by VPN clients like CorpLink); IPv6 is disabled by default.
+基于 [txthinking/socks5](https://github.com/txthinking/socks5) 构建，支持 TCP (CONNECT) 和 UDP (UDP ASSOCIATE)，可选 username/password 认证。TLS SNI remap 默认开启(处理客户端使用飞连VPN时飞连导致的DNS污染)，IPv6 默认禁用。
 
-## Use Case
+## 使用场景
 
 ``` txt
 ┌──────────────────────┐                            ┌─────────────────────────┐
-│  macOS / Linux / Win │                            │  Windows (corporate)    │
+│  macOS / Linux / Win │                            │  Windows（公司内网）      │
 │                      │          VPN / LAN         │                         │
 │  ProxyBridge/        │   ──────────────────────►  │  pantyhose.exe          │
-│  Proxifier           │                            │  (defaults: SNI on)     │
+│  Proxifier           │                            │  (默认: SNI 开)         │
 │                      │       SOCKS5 (TCP+UDP)     │         │               │
-│  All traffic proxied │   ──────────────────────►  │         ▼               │
-│                      │                            │  Corporate dedicated    │
-│                      │                            │  line (internet access) │
+│  全部流量代理          │   ──────────────────────►  │         ▼               │
+│                      │                            │  公司专线               │
+│                      │                            │  (可访问外网)            │
 └──────────────────────┘                            └─────────────────────────┘
 ```
 
-**Typical scenario**: Your corporate Windows machine has unrestricted internet via a dedicated line. Your personal macOS/Linux machine connects to the corporate network via VPN but has restricted/polluted DNS. Pantyhose bridges the gap — routing all VPN traffic from your personal machine through the corporate machine's network, effectively providing a "full intranet" experience.
+**典型场景**：公司 Windows 电脑通过专线可以直接访问外网（YouTube、Google 等）。个人 macOS/Linux 电脑通过 VPN（如飞连 CorpLink）连接公司内网，但 DNS 被污染。Pantyhose 将两者打通——实现个人电脑的VPN全部流量通过公司电脑的网络出口转发进而实现等效"全内网"环境。
 
-## Quick Start
+## 快速开始
 
 ```bash
-# Default (SNI remap on, IPv6 disabled, port 1080)
+# 默认配置启动（SNI remap 开启，IPv6 禁用，端口 1080）
 pantyhose.exe
 
-# With authentication (connections require username/password)
+# 启用，连接需用户名密码认证
 pantyhose.exe --user admin --pass secret
 
-# Custom port
+# 自定义端口
 pantyhose.exe --port 8899
 
-# Allow IPv6 outbound (corporate lines usually don't provide IPv6), test at https://www.whatismyip.com/
+# 允许 IPv6 出站 (但通常公司专线不提供ipv6的地址)，可通过https://www.whatismyip.com/测试
 pantyhose.exe --enable-ipv6
 ```
 
-## Client Setup
+## 客户端配置
 
-### ProxyBridge (Recommended)
+### ProxyBridge（推荐）
 
-[ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) is a cross-platform Proxifier alternative that intercepts all TCP/UDP traffic at the kernel level.
+[ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) 是一个跨平台的 Proxifier 替代品，在内核层拦截所有 TCP/UDP 流量。
 
-1. Install ProxyBridge on the client machine (macOS/Windows/Linux)
+1. 在客户端机器（macOS/Windows/Linux）上安装 ProxyBridge
 
-2. **Proxy Settings**: Go to **Proxy > Proxy Settings...** in the menu bar. Set **Proxy IP/Domain** to `<pantyhose machine IP>` (e.g. `10.154.38.77`), and set **Proxy Port** to the pantyhose listen port (default `1080`).
+2. **Proxy Settings**：在菜单栏 **Proxy > Proxy Settings...** 中，将 **Proxy IP/Domain** 设置为`<pantyhose 机器 IP>`（如 `10.154.38.77`），**Proxy Port** 设置为 pantyhose 监听端口（默认 `1080`）。
 
 ![ProxyBridge Proxy Settings](proxy-bridge-pic-1.png)
 
-3. **Proxy Rules**: Go to **Proxy > Proxy Rules...** to configure routing rules. VPN-related processes and addresses (e.g. `corplink-service`, `Lark Helper`, `Feishu`, `169.254.169.254`, `172.19.10.252`) should be set to **BOTH** protocol and **DIRECT** action to bypass the proxy. All other traffic should go through the proxy.
+3. **Proxy Rules**：在 **Proxy > Proxy Rules...** 中配置路由规则。飞连 VPN 相关的进程和地址（如 `corplink-service`、`Lark Helper`、`Feishu`、`169.254.169.254`、`172.19.10.252`）应设置为 **BOTH** 协议 + **DIRECT** 动作以绕过代理。其他流量走代理。
 
 ![ProxyBridge Proxy Rules](proxy-bridge-pic-2.png)
 
-> **Tip**: Disabling IPv6 in the client's system network settings can further reduce DNS pollution issues:
+> **提示**：在客户端系统网络设置里禁用 IPv6 可以进一步减少 DNS 污染问题：
 >
 > ```powershell
-> # Windows client
+> # Windows 客户端
 > reg add "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" /v DisabledComponents /t REG_DWORD /d 0xFF /f
 >
-> # macOS client
+> # macOS 客户端
 > sudo networksetup -setv6off Wi-Fi
 > ```
 
 ### Proxifier
 
-1. Install [Proxifier](https://www.proxifier.com/)
-2. Go to **Profile > Proxy Servers > Add**
-3. Enter:
-   - Address: `<pantyhose machine IP>`
+1. 安装 [Proxifier](https://www.proxifier.com/)
+2. 进入 **Profile > Proxy Servers > Add**
+3. 填入：
+   - Address: `<pantyhose 机器 IP>`
    - Port: `1080`
    - Protocol: **SOCKS Version 5**
-   - Authentication: enter username/password if configured
-4. Set up **Proxification Rules** to route desired traffic
-5. Enable **"Resolve hostnames through proxy"** for full DNS proxying
+   - Authentication: 如有配置，填入用户名密码
+4. 配置 **Proxification Rules** 路由所需流量
+5. 启用 **"Resolve hostnames through proxy"** 实现完整 DNS 代理
 
-## Firewall
+## 防火墙
 
-The server listens on a TCP+UDP port. Windows Firewall may block inbound connections. Run these commands **as Administrator** on the proxy machine:
+服务监听 TCP+UDP 端口。Windows 防火墙可能阻止入站连接。在代理机器上**以管理员身份**运行：
 
 ```powershell
-# TCP (required for all connections)
+# TCP（所有连接必需）
 netsh advfirewall firewall add rule name="pantyhose-tcp" dir=in action=allow protocol=TCP localport=1080
 
-# UDP (required for UDP ASSOCIATE / QUIC / DNS proxying)
+# UDP（UDP ASSOCIATE / QUIC / DNS 代理必需）
 netsh advfirewall firewall add rule name="pantyhose-udp" dir=in action=allow protocol=UDP localport=1080
 ```
 
-Replace `1080` with your actual port if different. **Both rules are required** — missing the UDP rule will cause QUIC/HTTP3 traffic to fail with "The peer closed the flow" errors on the client.
+如使用非默认端口，将 `1080` 替换为实际端口。**两条规则都必须添加**——缺少 UDP 规则会导致客户端出现 "The peer closed the flow" 错误。
 
-Clean up firewall rules:
+清理防火墙规则：
 
 ```bash
 pantyhose.exe --fw-clean
-pantyhose.exe --fw-clean --port 8899  # custom port
+pantyhose.exe --fw-clean --port 8899  # 自定义端口
 ```
 
-## Development
+## 开发上手
 
-### Build from Source
+### 从源码编译
 
-Requires [Go 1.21+](https://go.dev/dl/).
+需要 [Go 1.21+](https://go.dev/dl/)。
 
 ```bash
 git clone <repo-url>
@@ -110,155 +110,155 @@ cd pantyhose
 go build -o pantyhose.exe .
 ```
 
-### Cross-compile for Linux (optional)
+### 交叉编译 Linux 版本（可选）
 
 ```bash
 GOOS=linux GOARCH=amd64 go build -o pantyhose .
 ```
 
-## Usage
+## 参数说明
 
 ```txt
-pantyhose.exe [flags]
+pantyhose.exe [参数]
 
-Flags:
-  --addr string        Listen address (default "0.0.0.0")
-  --port int           Listen port (default 1080)
-  --ip string          Outbound IP for UDP replies (auto-detected if empty)
-  --user string        Username for SOCKS5 auth (no auth if empty)
-  --pass string        Password for SOCKS5 auth (no auth if empty)
-  --tcp-timeout int    TCP idle timeout in seconds (default 60)
-  --udp-timeout int    UDP session timeout in seconds (default 60)
-  --enable-ipv6        Allow IPv6 outbound (disabled by default)
-  --no-sni-remap       Disable TLS SNI hostname re-resolution (enabled by default)
-  --sni-ports string   Comma-separated ports for SNI remap (default "443")
-  --verbose            Enable verbose logging (SNI details, connection lifecycle)
-  --fw-clean           Print firewall rule cleanup commands and exit
-  --help-cn            Show help message in Chinese
-  --version            Print version and exit
+参数:
+  --addr string        监听地址 (默认 "0.0.0.0")
+  --port int           监听端口 (默认 1080)
+  --ip string          UDP ASSOCIATE 回复使用的出站 IP（留空自动检测）
+  --user string        SOCKS5 认证用户名（留空不启用认证）
+  --pass string        SOCKS5 认证密码（留空不启用认证）
+  --tcp-timeout int    TCP 连接空闲超时，单位秒 (默认 60)
+  --udp-timeout int    UDP 会话超时，单位秒 (默认 60)
+  --enable-ipv6        允许 IPv6 出站连接（默认禁用）
+  --no-sni-remap       禁用 TLS SNI 域名重解析（默认启用）
+  --sni-ports string   应用 SNI remap 的端口列表，逗号分隔 (默认 "443")
+  --verbose            启用详细日志
+  --fw-clean           输出删除防火墙规则的命令后退出
+  --help-cn            显示中文帮助信息
+  --version            显示版本号
 ```
 
-### Authentication Modes
+### 认证模式
 
-- **No auth**: Omit `--user` and `--pass` (or leave them empty)
-- **Username/Password**: Provide both `--user` and `--pass`
+- **无认证**：不传 `--user` 和 `--pass`
+- **用户名/密码认证**：同时传入 `--user` 和 `--pass`
 
-## Flags Explained
+## 核心功能
 
-### IPv6 Handling (disabled by default / `--enable-ipv6`)
+### IPv6 处理（默认禁用 / `--enable-ipv6`）
 
-**Default behavior**: IPv6 is disabled by default, and all outbound connections are forced to IPv4. This avoids connection timeouts when the client's DNS resolves to IPv6 addresses but the corporate network has no IPv6 route.
+**默认行为**：IPv6 默认禁用，所有出站连接强制使用 IPv4。这避免了客户端 DNS 解析到 IPv6 地址后连接超时的问题（公司网络通常没有 IPv6 路由）。
 
-**`--enable-ipv6`**: Enables IPv6 outbound connections. Only use this if the proxy machine has working IPv6 connectivity.
+**`--enable-ipv6`**：强制启用 IPv6 出站。仅在确认代理机器有可用的 IPv6 网络时使用。
 
-### SNI Remap (default on / `--no-sni-remap`)
+### SNI Remap（默认启用 / `--no-sni-remap`）
 
-SNI remap is **enabled by default**. It solves DNS pollution from VPN clients like CorpLink.
+SNI remap **默认启用**，用于解决 VPN 客户端（如飞连 CorpLink）导致的 DNS 污染问题。
 
-**Problem**: The client machine's DNS is polluted (e.g. by a VPN client that returns fake IPs for certain domains). Tools like [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) intercept traffic at the kernel level and send already-resolved IP addresses — not domain names — to the SOCKS5 proxy. The proxy connects to the fake IP and fails.
+**问题**：客户端的 DNS 被污染（VPN 客户端返回虚假 IP）。[ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) 等工具在内核层拦截流量，发送给 SOCKS5 proxy 的是已经解析好的 IP 地址而非域名。代理连接到虚假 IP 后失败。
 
-**Solution**: Pantyhose intercepts HTTPS connections (port 443 by default) and reads the TLS ClientHello to extract the SNI (Server Name Indication) hostname. It then re-resolves that hostname using the proxy machine's local DNS (which returns correct IPs) and connects to the correct destination.
+**解决方案**：Pantyhose 拦截 HTTPS 连接（默认 443 端口），读取 TLS ClientHello 提取 SNI hostname，然后通过代理机器的本地 DNS 重新解析域名，连接到正确的 IP。
 
-**How it works**:
+**工作原理**：
 
 ```txt
-1. Client DNS (polluted):  youtube.com → 185.45.5.35 (fake IP)
-2. ProxyBridge sends:      CONNECT 185.45.5.35:443
-3. Pantyhose reads TLS ClientHello → SNI = "www.youtube.com"
-4. Pantyhose re-resolves:  youtube.com → 142.251.10.91 (correct IP via corporate DNS)
-5. Pantyhose connects to:  142.251.10.91:443 ✓
+1. 客户端 DNS（被污染）:  youtube.com → 185.45.5.35（虚假 IP）
+2. ProxyBridge 发送:      CONNECT 185.45.5.35:443
+3. Pantyhose 读取 TLS ClientHello → SNI = "www.youtube.com"
+4. Pantyhose 重新解析:    youtube.com → 142.251.10.91（正确 IP，通过公司 DNS）
+5. Pantyhose 连接:        142.251.10.91:443 ✓
 ```
 
-**`--no-sni-remap`**: Disables SNI remap entirely. Use this if you don't have DNS pollution issues and want a plain SOCKS5 proxy.
+**`--no-sni-remap`**：完全禁用 SNI remap。如果没有 DNS 污染问题，可以用此参数切换为纯 SOCKS5 proxy 模式。
 
-**Limitation**: Only works for TLS traffic since it relies on TLS SNI. Non-TLS traffic is handled gracefully (falls back to direct connection).
+**限制**：仅对 TLS 流量有效（依赖 TLS SNI）。非 TLS 流量会直接转发。
 
-By default only port 443 is intercepted. Use `--sni-ports` to add custom ports:
+自定义 SNI remap 端口：
 
 ```bash
-# Also sniff SNI on ports 8443 and 4443
+# 在 443、8443、4443 端口上启用 SNI 嗅探
 pantyhose.exe --sni-ports 443,8443,4443
 ```
 
-### Default Configuration
+### 默认配置
 
-Just running `pantyhose.exe` with no flags gives you the **recommended configuration**:
+直接运行 `pantyhose.exe` 即为**推荐配置**：
 
-- SNI remap enabled (fixes DNS pollution)
-- IPv6 disabled (avoids timeouts)
-- Listening on `0.0.0.0:1080`
-- No authentication
+- SNI remap 启用（修复 DNS 污染）
+- IPv6 禁用（避免超时）
+- 监听 `0.0.0.0:1080`
+- 无认证
 
-## Troubleshooting
+## 故障排查
 
-### Client can't connect at all
+### 客户端完全无法连接
 
-- Verify the proxy machine's IP is reachable from the client: `ping <proxy-ip>`
-- Check that both TCP and UDP firewall rules are in place (see Firewall section)
-- Ensure pantyhose is running and listening: check for `SOCKS5 server listening on ...` in logs
+- 确认代理机器 IP 可达：`ping <proxy-ip>`
+- 检查 TCP 和 UDP 防火墙规则是否都已添加（见防火墙章节）
+- 确认 pantyhose 正在运行：查看日志中的 `SOCKS5 server listening on ...`
 
-### IPv6 connection timeouts
+### IPv6 连接超时
 
 ```txt
 dial tcp [2404:6800:4012:6::200e]:443: connectex: A connection attempt failed...
 ```
 
-The proxy machine has no IPv6 connectivity. IPv6 is disabled by default, so this should not occur. If it does, check whether `--enable-ipv6` was added by mistake.
+代理机器没有 IPv6 网络。默认已禁用 IPv6，此问题不应出现。如果出现，检查是否误加了 `--enable-ipv6`。
 
-### DNS pollution (wrong IPs, sites fail that work on proxy machine)
+### DNS 污染（IP 错误，代理机器能访问的网站客户端无法访问）
 
 ```txt
 dial tcp4 185.45.5.35:443: connectex: A connection attempt failed...
 ```
 
-The client's DNS returns fake IPs. SNI remap is enabled by default and should handle this. Verify by comparing DNS results:
+客户端 DNS 返回虚假 IP。SNI remap 默认启用，应自动处理此问题。可通过对比 DNS 结果确认：
 
 ```bash
-# On client machine
+# 在客户端
 nslookup www.youtube.com
-# On proxy machine
+# 在代理机器
 nslookup www.youtube.com
 ```
 
-If they return different IPs, DNS pollution is the cause.
+如果结果不同，说明存在 DNS 污染。
 
-### "The peer closed the flow" (ProxyBridge)
+### "The peer closed the flow"（ProxyBridge）
 
-UDP firewall rule is missing. Add the UDP rule (see Firewall section).
+缺少 UDP 防火墙规则。添加 UDP 规则（见防火墙章节）。
 
-### Some sites work on proxy machine but not through proxy
+### 部分网站代理机器能访问但通过代理不行
 
-- If those sites use HTTPS: ensure SNI remap is active (enabled by default, check logs for "SNI remap enabled")
-- If those sites use HTTP only: the client's DNS returns a fake IP and there's no SNI to extract. Consider adding the correct IP to the client's `/etc/hosts`
+- HTTPS 网站：确认 SNI remap 已启用（默认启用，查看日志中的 "SNI remap enabled"）
+- HTTP 网站：客户端 DNS 返回虚假 IP 且无 SNI 可提取。考虑在客户端 `/etc/hosts` 中添加正确 IP
 
-## Testing
+## 测试
 
-### Automated Tests
+### 自动化测试
 
 ```bash
 go test -v -count=1 -timeout 60s ./...
 ```
 
-### Manual Verification via WSL or Another Machine
+### 通过 WSL 或其他机器手动验证
 
 ```bash
-# Test Network
+# Test 网络
 curl ipinfo.io/json
 
-# Test TCP proxy (no auth)
+# 测试 TCP 代理（无认证）
 curl --socks5 <host-ip>:1080 http://httpbin.org/ip
 
-# Test TCP proxy (with auth)
+# 测试 TCP 代理（有认证）
 curl --socks5 <host-ip>:1080 --proxy-user admin:secret http://httpbin.org/ip
 
-# Test DNS resolution through proxy
+# 测试 DNS 解析通过代理
 curl --socks5-hostname <host-ip>:1080 http://httpbin.org/ip
 
-# Test HTTPS through proxy
+# 测试 HTTPS 通过代理
 curl --socks5 <host-ip>:1080 https://www.google.com -o /dev/null -w "%{http_code}\n"
 ```
 
-Replace `<host-ip>` with the proxy machine's LAN IP (shown in startup logs as "Using outbound IP: x.x.x.x").
+将 `<host-ip>` 替换为代理机器的内网 IP（启动日志中 "Using outbound IP: x.x.x.x" 显示的地址）。
 
 ## License
 

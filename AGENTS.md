@@ -72,7 +72,8 @@ go test -v -count=1 -timeout 60s ./...
 | `go.mod` / `go.sum` | Go module dependencies |
 | `.github/workflows/release.yml` | GitHub Actions: build & publish release on tag push |
 | `AGENTS.md` | This file — AI agent development guidance |
-| `README.md` | Human-facing usage documentation |
+| `README.md` | Human-facing usage documentation (Chinese, default) |
+| `README_EN.md` | Human-facing usage documentation (English) |
 | `TODO.md` | Development kanban / task tracking |
 
 ## Code Conventions
@@ -119,7 +120,7 @@ go test -v -count=1 -timeout 60s ./...
    ```powershell
    $env:GIT_AUTHOR_NAME="Opus 4.6"; $env:GIT_AUTHOR_EMAIL=""; $env:GIT_COMMITTER_NAME="Opus 4.6"; $env:GIT_COMMITTER_EMAIL=""; git commit -m "feat: ..."
    ```
-   Replace `Opus 4.6` with the actual model name (e.g. `Claude 3.5 Sonnet`, `Claude 4.6 Opus`). **Never** include a real email address. Using only `--author` is **insufficient** — it leaves the Committer as the system default.
+   **All AI agents (including Claude 4.6 Opus) must use `Opus 4.6` as the unified author/committer name** — this matches the existing commit history. Do **not** use `Claude 4.6 Opus` or any other variant. **Never** include a real email address. Using only `--author` is **insufficient** — it leaves the Committer as the system default.
 2. **Auto-commit after each milestone**: After completing a feature, bug fix, or refactoring, **automatically commit without asking the user for confirmation**. Do not wait for a second confirmation — just run tests, and if they pass, commit immediately as part of the wrap-up.
 3. **Commit message format**: Use conventional style — e.g. `feat: add TLS support`, `fix: handle nil IP in detection`, `test: add UDP proxy test`
 4. **Test before committing**: Run `go test ./...` and ensure all tests pass before creating a commit
