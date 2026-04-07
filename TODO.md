@@ -26,6 +26,8 @@ _(none)_
 
 ## Backlog
 
+- [ ] Release: add Linux amd64 build to GitHub Actions release workflow
+- [ ] Release: add macOS amd64/arm64 builds to GitHub Actions release workflow
 - [ ] TLS/encryption layer for secure proxy connections
 - [ ] IP whitelist / access control
 - [ ] Connection logging with client IP and destination

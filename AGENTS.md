@@ -70,6 +70,7 @@ go test -v -count=1 -timeout 60s ./...
 | `main_test.go` | Unit tests + integration tests for core proxy functionality |
 | `sni_test.go` | Unit tests (SNI parser) + integration tests (SNI remap handler with TLS) |
 | `go.mod` / `go.sum` | Go module dependencies |
+| `.github/workflows/release.yml` | GitHub Actions: build & publish release on tag push |
 | `AGENTS.md` | This file — AI agent development guidance |
 | `README.md` | Human-facing usage documentation |
 | `TODO.md` | Development kanban / task tracking |
@@ -117,6 +118,22 @@ go test -v -count=1 -timeout 60s ./...
 5. **One logical change per commit**: Don't bundle unrelated changes
 6. **Update TODO.md**: Mark tasks complete and add new tasks as they arise
 7. **Update documentation**: If a change affects usage (new flags, behavior changes), update README.md and AGENTS.md accordingly
+
+## Release Workflow
+
+Releases are automated via GitHub Actions (`.github/workflows/release.yml`).
+
+**How to release:**
+1. Run `go test ./...` locally and ensure all tests pass
+2. Tag the commit: `git tag v1.0.0`
+3. Push the tag: `git push origin v1.0.0`
+4. GitHub Actions builds `pantyhose.exe` (Windows amd64) with version injected via `-ldflags "-X main.version=..."`
+5. A GitHub Release is created automatically with the exe and auto-generated release notes
+6. (Optional) Edit release notes on GitHub for polish
+
+**Version embedding:** The `version` variable in `main.go` defaults to `"dev"`. Release builds inject the real version from the git tag via `ldflags`. Never hardcode a version number in source.
+
+**Current release artifacts:** Windows amd64 only (`pantyhose.exe`). Linux and macOS builds are planned (see TODO.md).
 
 ## Adding New Features
 

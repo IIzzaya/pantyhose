@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	version = "0.4.0"
+	version = "dev"
 	verbose bool
 )
 
