@@ -111,7 +111,15 @@ go test -v -count=1 -timeout 60s ./...
 
 **IMPORTANT**: Follow these rules for all code changes:
 
-1. **Author identity**: All AI agent commits **must** use the model name as the author with no email. Use `git commit --author="<model_name> <>"` for every commit. For example: `git commit --author="Opus 4.6 <>"`, `git commit --author="Claude 3.5 Sonnet <>"`. **Never** include a real email address in AI agent commits.
+1. **Author & Committer identity**: All AI agent commits **must** set both Author and Committer to the model name with no email. Set environment variables before committing:
+   ```bash
+   GIT_AUTHOR_NAME="Opus 4.6" GIT_AUTHOR_EMAIL="" GIT_COMMITTER_NAME="Opus 4.6" GIT_COMMITTER_EMAIL="" git commit -m "feat: ..."
+   ```
+   In PowerShell:
+   ```powershell
+   $env:GIT_AUTHOR_NAME="Opus 4.6"; $env:GIT_AUTHOR_EMAIL=""; $env:GIT_COMMITTER_NAME="Opus 4.6"; $env:GIT_COMMITTER_EMAIL=""; git commit -m "feat: ..."
+   ```
+   Replace `Opus 4.6` with the actual model name (e.g. `Claude 3.5 Sonnet`, `Claude 4.6 Opus`). **Never** include a real email address. Using only `--author` is **insufficient** — it leaves the Committer as the system default.
 2. **Auto-commit after each milestone**: After completing a feature, bug fix, or refactoring, **automatically commit without asking the user for confirmation**. Do not wait for a second confirmation — just run tests, and if they pass, commit immediately as part of the wrap-up.
 3. **Commit message format**: Use conventional style — e.g. `feat: add TLS support`, `fix: handle nil IP in detection`, `test: add UDP proxy test`
 4. **Test before committing**: Run `go test ./...` and ensure all tests pass before creating a commit
