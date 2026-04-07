@@ -110,12 +110,13 @@ go test -v -count=1 -timeout 60s ./...
 
 **IMPORTANT**: Follow these rules for all code changes:
 
-1. **Auto-commit after each milestone**: After completing a feature, bug fix, or refactoring, **automatically commit without asking the user for confirmation**. Do not wait for a second confirmation — just run tests, and if they pass, commit immediately as part of the wrap-up.
-2. **Commit message format**: Use conventional style — e.g. `feat: add TLS support`, `fix: handle nil IP in detection`, `test: add UDP proxy test`
-3. **Test before committing**: Run `go test ./...` and ensure all tests pass before creating a commit
-4. **One logical change per commit**: Don't bundle unrelated changes
-5. **Update TODO.md**: Mark tasks complete and add new tasks as they arise
-6. **Update documentation**: If a change affects usage (new flags, behavior changes), update README.md and AGENTS.md accordingly
+1. **Author identity**: All AI agent commits **must** use the model name as the author with no email. Use `git commit --author="<model_name> <>"` for every commit. For example: `git commit --author="Opus 4.6 <>"`, `git commit --author="Claude 3.5 Sonnet <>"`. **Never** include a real email address in AI agent commits.
+2. **Auto-commit after each milestone**: After completing a feature, bug fix, or refactoring, **automatically commit without asking the user for confirmation**. Do not wait for a second confirmation — just run tests, and if they pass, commit immediately as part of the wrap-up.
+3. **Commit message format**: Use conventional style — e.g. `feat: add TLS support`, `fix: handle nil IP in detection`, `test: add UDP proxy test`
+4. **Test before committing**: Run `go test ./...` and ensure all tests pass before creating a commit
+5. **One logical change per commit**: Don't bundle unrelated changes
+6. **Update TODO.md**: Mark tasks complete and add new tasks as they arise
+7. **Update documentation**: If a change affects usage (new flags, behavior changes), update README.md and AGENTS.md accordingly
 
 ## Adding New Features
 
