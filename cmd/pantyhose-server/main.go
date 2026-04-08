@@ -49,17 +49,44 @@ func debugf(format string, args ...any) {
 func main() {
 	enableANSIColors()
 
-	if len(os.Args) > 1 && os.Args[1] == "gencert" {
+	if len(os.Args) < 2 {
+		printTopLevelHelp()
+		os.Exit(0)
+	}
+
+	switch os.Args[1] {
+	case "gencert":
 		runGencert(os.Args[2:])
-		return
+	case "serve":
+		runServe(os.Args[2:])
+	case "--version", "-version":
+		fmt.Printf("pantyhose-server %s\n", version)
+	case "--help", "-help", "-h":
+		printTopLevelHelp()
+	default:
+		runServe(os.Args[1:])
 	}
+}
 
-	args := os.Args[1:]
-	if len(os.Args) > 1 && os.Args[1] == "serve" {
-		args = os.Args[2:]
-	}
+func printTopLevelHelp() {
+	fmt.Printf(`pantyhose-server %s - SOCKS5 proxy with TLS encrypted tunnel
 
-	runServe(args)
+Usage:
+  pantyhose-server <command> [flags]
+
+Commands:
+  serve       Start the SOCKS5 proxy server (default if no command given)
+  gencert     Generate CA, server, and client TLS certificates
+
+Examples:
+  pantyhose-server gencert                  Generate certificates to ./certs/
+  pantyhose-server gencert --hosts 10.0.0.5 Include additional IP in server cert
+  pantyhose-server serve                    Start server (TLS mode, certs from ./certs/)
+  pantyhose-server serve --insecure         Start server without TLS
+  pantyhose-server serve --port 8899        Start server on custom port
+
+Run 'pantyhose-server <command> --help' for details on each command.
+`, version)
 }
 
 func runGencert(args []string) {
