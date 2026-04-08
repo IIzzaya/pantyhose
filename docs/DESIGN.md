@@ -53,8 +53,7 @@ certs/
 ├── ca.key          ← CA 私钥（仅服务端保管）
 ├── server.crt      ← 服务端证书
 ├── server.key      ← 服务端私钥
-├── client.crt      ← 客户端证书（拷贝给客户端）
-└── client.key      ← 客户端私钥（拷贝给客户端）
+└── client.pem      ← 客户端捆绑文件（CA cert + client cert + client key，拷贝给客户端）
 ```
 
 **证书技术细节**：

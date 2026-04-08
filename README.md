@@ -40,23 +40,23 @@ pantyhose-server gencert --out ./certs/ --hosts "10.0.0.5,proxy.local"
 - `certs/ca.crt` — CA 证书
 - `certs/ca.key` — CA 私钥（保管好！）
 - `certs/server.crt` / `certs/server.key` — 服务端证书/私钥
-- `certs/client.crt` / `certs/client.key` — 客户端证书/私钥
+- `certs/client.pem` — 客户端捆绑文件（CA cert + client cert + client key）
 
 ### 2. 拷贝客户端证书
 
-将以下 3 个文件拷贝到客户端机器：
-- `ca.crt`
-- `client.crt`
-- `client.key`
+将 `client.pem` 拷贝到客户端机器的 `certs/` 目录下。
 
 ### 3. 服务端：启动
 
 ```bash
-# TLS 加密模式（默认，推荐）
-pantyhose-server serve --cert certs/server.crt --key certs/server.key --ca certs/ca.crt
+# TLS 加密模式（默认，推荐，证书从 ./certs/ 自动读取）
+pantyhose-server serve
 
 # 自定义端口
-pantyhose-server serve --port 8899 --cert certs/server.crt --key certs/server.key --ca certs/ca.crt
+pantyhose-server serve --port 8899
+
+# 指定自定义证书路径
+pantyhose-server serve --cert /path/to/server.crt --key /path/to/server.key --ca /path/to/ca.crt
 
 # 非加密模式（仅限可信网络）
 pantyhose-server serve --insecure
@@ -71,11 +71,14 @@ pantyhose-server serve --insecure
 > ```
 
 ```bash
-# 连接到服务端（默认监听 127.0.0.1:1080）
-pantyhose-client --server 10.0.0.5:1080 --ca ca.crt --cert client.crt --key client.key
+# 连接到服务端（默认监听 127.0.0.1:1080，证书从 certs/client.pem 自动读取）
+pantyhose-client --server 10.0.0.5:1080
 
 # 自定义本地监听地址
-pantyhose-client --server 10.0.0.5:1080 --listen 127.0.0.1:9090 --ca ca.crt --cert client.crt --key client.key
+pantyhose-client --server 10.0.0.5:1080 --listen 127.0.0.1:9090
+
+# 指定自定义 PEM 文件路径
+pantyhose-client --server 10.0.0.5:1080 --pem /path/to/client.pem
 ```
 
 ### 5. 配置 ProxyBridge
@@ -90,7 +93,7 @@ pantyhose-client --server 10.0.0.5:1080 --listen 127.0.0.1:9090 --ca ca.crt --ce
 pantyhose-client ──[TLS 1.3 + mTLS]──► pantyhose-server
        │                                       │
    客户端证书验证                           服务端证书验证
-   (client.crt + client.key)            (server.crt + server.key)
+   (client.pem)                        (server.crt + server.key)
        │                                       │
        └──── 双向认证，由同一 CA 签发 ─────────┘
 ```
@@ -170,19 +173,21 @@ GOOS=linux GOARCH=amd64 go build -o pantyhose-server-linux ./cmd/pantyhose-serve
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--cert` | _(必需)_ | 服务端 TLS 证书 |
-| `--key` | _(必需)_ | 服务端 TLS 私钥 |
-| `--ca` | _(必需)_ | CA 证书（验证客户端） |
-| `--insecure` | `false` | 非加密模式（无 TLS） |
 | `--addr` | `0.0.0.0` | 监听地址 |
 | `--port` | `1080` | 监听端口 |
 | `--ip` | 自动检测 | UDP ASSOCIATE 出站 IP |
+| `--cert` | `certs/server.crt` | 服务端 TLS 证书 |
+| `--key` | `certs/server.key` | 服务端 TLS 私钥 |
+| `--ca` | `certs/ca.crt` | CA 证书（验证客户端） |
+| `--insecure` | `false` | 非加密模式（无 TLS） |
 | `--tcp-timeout` | `60` | TCP 空闲超时（秒） |
 | `--udp-timeout` | `60` | UDP 会话超时（秒） |
 | `--enable-ipv6` | `false` | 允许 IPv6 出站 |
 | `--no-sni-remap` | `false` | 禁用 SNI remap |
 | `--sni-ports` | `"443"` | SNI remap 端口 |
 | `--verbose` | `false` | 详细日志 |
+| `--fw-clean` | `false` | 输出删除防火墙规则的命令后退出 |
+| `--help-cn` | `false` | 显示中文帮助信息 |
 
 ### `pantyhose-server gencert`
 
@@ -198,11 +203,9 @@ GOOS=linux GOARCH=amd64 go build -o pantyhose-server-linux ./cmd/pantyhose-serve
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--server` | _(必需)_ | 远程服务端地址 |
-| `--cert` | _(必需)_ | 客户端 TLS 证书 |
-| `--key` | _(必需)_ | 客户端 TLS 私钥 |
-| `--ca` | _(必需)_ | CA 证书（验证服务端） |
+| `--server` | _(必需)_ | 远程服务端地址（host:port） |
 | `--listen` | `127.0.0.1:1080` | 本地 SOCKS5 监听地址 |
+| `--pem` | `certs/client.pem` | 客户端 PEM 文件（含 CA cert + client cert + client key） |
 
 ## 核心功能
 
@@ -226,7 +229,7 @@ GOOS=linux GOARCH=amd64 go build -o pantyhose-server-linux ./cmd/pantyhose-serve
 
 - 确认服务端 IP 可达：`ping <server-ip>`
 - 检查防火墙规则
-- 确认证书文件正确（ca.crt、client.crt、client.key）
+- 确认证书文件正确（client.pem）
 - 检查客户端日志中的 TLS 错误信息
 
 ### DNS 污染（SNI remap 相关）

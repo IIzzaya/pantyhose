@@ -27,11 +27,11 @@ The primary use case is cross-network proxying with encryption:
 # Server: generate certificates
 pantyhose-server gencert --out ./certs/
 
-# Server: start with TLS
-pantyhose-server serve --cert certs/server.crt --key certs/server.key --ca certs/ca.crt
+# Server: start with TLS (certs auto-loaded from ./certs/)
+pantyhose-server serve
 
-# Client: connect to server (copy ca.crt, client.crt, client.key from server)
-pantyhose-client --server <server-ip>:1080 --ca ca.crt --cert client.crt --key client.key
+# Client: connect to server (copy client.pem from server to ./certs/)
+pantyhose-client --server <server-ip>:1080
 
 # ProxyBridge: configure proxy as 127.0.0.1:1080
 ```
@@ -76,14 +76,14 @@ docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
 # Generate certificates
 ./pantyhose-server gencert --out ./certs/
 
-# Run server (TLS mode — default)
-./pantyhose-server serve --cert certs/server.crt --key certs/server.key --ca certs/ca.crt
+# Run server (TLS mode — default, certs auto-loaded from ./certs/)
+./pantyhose-server serve
 
 # Run server (insecure mode)
 ./pantyhose-server serve --insecure
 
-# Run client
-./pantyhose-client --server <host>:1080 --ca ca.crt --cert client.crt --key client.key
+# Run client (client.pem auto-loaded from ./certs/)
+./pantyhose-client --server <host>:1080
 ```
 
 ## File Structure
@@ -142,9 +142,9 @@ docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
 | `--addr` | `0.0.0.0` | Listen address |
 | `--port` | `1080` | Listen port |
 | `--ip` | auto-detected | Outbound IP for UDP ASSOCIATE |
-| `--cert` | _(required)_ | Server TLS certificate file |
-| `--key` | _(required)_ | Server TLS private key file |
-| `--ca` | _(required)_ | CA certificate for client verification |
+| `--cert` | `certs/server.crt` | Server TLS certificate file |
+| `--key` | `certs/server.key` | Server TLS private key file |
+| `--ca` | `certs/ca.crt` | CA certificate for client verification |
 | `--insecure` | `false` | Run without TLS (open proxy) |
 | `--tcp-timeout` | `60` | TCP idle timeout (seconds) |
 | `--udp-timeout` | `60` | UDP session timeout (seconds) |
@@ -152,6 +152,8 @@ docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
 | `--no-sni-remap` | `false` | Disable SNI remap |
 | `--sni-ports` | `"443"` | Ports to apply SNI remap |
 | `--verbose` | `false` | Enable verbose logging |
+| `--fw-clean` | `false` | Print firewall cleanup commands and exit |
+| `--help-cn` | `false` | Show help in Chinese |
 | `--version` | — | Print version and exit |
 
 ### `pantyhose-server gencert` flags
@@ -168,9 +170,7 @@ docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
 |------|---------|-------------|
 | `--server` | _(required)_ | Remote server address (host:port) |
 | `--listen` | `127.0.0.1:1080` | Local SOCKS5 listen address |
-| `--cert` | _(required)_ | Client TLS certificate file |
-| `--key` | _(required)_ | Client TLS private key file |
-| `--ca` | _(required)_ | CA certificate file |
+| `--pem` | `certs/client.pem` | Client PEM file (CA cert + client cert + client key) |
 | `--version` | — | Print version and exit |
 
 ## Git Workflow

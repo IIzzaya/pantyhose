@@ -80,7 +80,8 @@ pantyhose/
 ├── docs/
 │   ├── DESIGN.md                      # 设计决策记录
 │   ├── ARCHITECTURE.md                # 本文档
-│   └── PROTOCOL.md                    # 协议细节
+│   ├── PROTOCOL.md                    # 协议细节
+│   └── CERTIFICATES.md               # 证书管理指南
 │
 ├── Dockerfile                         # 多阶段构建（server / client / test）
 ├── docker-compose.test.yml            # Docker 测试编排
@@ -98,14 +99,14 @@ pantyhose/
 
 ```
 1. 启动
-   pantyhose-server serve --cert ... --key ... --ca ...
+   pantyhose-server serve    // 证书从 ./certs/ 自动读取
    └─→ tunnel.NewServer(addr, cert, key, ca)
        └─→ tls.Listen("tcp", addr, tlsConfig)    // mTLS 监听
        └─→ go s.acceptLoop()                      // 后台接受 TLS 连接
 
 2. 客户端连接
-   pantyhose-client --server host:1080 --cert ... --key ... --ca ...
-   └─→ tunnel.NewClient(serverAddr, cert, key, ca)
+   pantyhose-client --server host:1080    // client.pem 从 ./certs/ 自动读取
+   └─→ tunnel.NewClientFromPEM(serverAddr, pemFile)
    └─→ client.Connect()
        └─→ tls.Dial("tcp", serverAddr, tlsConfig) // mTLS 握手
        └─→ yamux.Client(conn, config)              // 建立 yamux session

@@ -2,102 +2,135 @@
 
 English | [中文](README.md)
 
-A lightweight SOCKS5 forward proxy server written in Go. Run it on a machine with network access (e.g. a corporate dedicated line), and route another machine's entire network traffic through it using [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge), [Proxifier](https://www.proxifier.com/), or similar tools.
+A SOCKS5 forward proxy with encrypted TLS tunnel support, written in Go. It consists of two components:
 
-Built with [txthinking/socks5](https://github.com/txthinking/socks5). Supports TCP (CONNECT) and UDP (UDP ASSOCIATE) with optional username/password authentication. TLS SNI remap is enabled by default (fixes DNS pollution caused by VPN clients like CorpLink); IPv6 is disabled by default.
+- **pantyhose-server**: Runs on a machine with internet access (e.g. a corporate Windows machine with a dedicated line), accepting encrypted SOCKS5 connections
+- **pantyhose-client**: Runs on the client machine, providing a local SOCKS5 port that tunnels all traffic to the server over a TLS encrypted channel
+
+Built with [txthinking/socks5](https://github.com/txthinking/socks5) for SOCKS5 protocol and [hashicorp/yamux](https://github.com/hashicorp/yamux) for multiplexing. Supports mTLS mutual certificate authentication, TLS SNI remap (fixes DNS pollution), and automatic reconnection.
 
 ## Use Case
 
 ``` txt
-┌──────────────────────┐                            ┌─────────────────────────┐
-│  macOS / Linux / Win │                            │  Windows (corporate)    │
-│                      │          VPN / LAN         │                         │
-│  ProxyBridge/        │   ──────────────────────►  │  pantyhose.exe          │
-│  Proxifier           │                            │  (defaults: SNI on)     │
-│                      │       SOCKS5 (TCP+UDP)     │         │               │
-│  All traffic proxied │   ──────────────────────►  │         ▼               │
-│                      │                            │  Corporate dedicated    │
-│                      │                            │  line (internet access) │
-└──────────────────────┘                            └─────────────────────────┘
+┌──────────────────────┐                                  ┌─────────────────────────┐
+│  macOS / Linux / Win │                                  │  Windows (corporate)    │
+│                      │          VPN / LAN               │                         │
+│  ProxyBridge/        │   ─────────────────────────►     │  pantyhose-server       │
+│  Proxifier           │                                  │  (TLS + mTLS auth)      │
+│       ↓              │   TLS 1.3 + yamux encrypted      │         │               │
+│  pantyhose-client    │   ═══════════════════════════►   │         ▼               │
+│  (local SOCKS5)      │                                  │  Dedicated line         │
+│                      │                                  │  (internet access)      │
+└──────────────────────┘                                  └─────────────────────────┘
 ```
 
-**Typical scenario**: Your corporate Windows machine has unrestricted internet via a dedicated line. Your personal macOS/Linux machine connects to the corporate network via VPN but has restricted/polluted DNS. Pantyhose bridges the gap — routing all VPN traffic from your personal machine through the corporate machine's network, effectively providing a "full intranet" experience.
+**Typical scenario**: Your corporate Windows machine has unrestricted internet via a dedicated line (YouTube, Google, etc.). Your personal macOS/Linux machine connects to the corporate network via VPN but has polluted DNS. Pantyhose bridges the gap with an encrypted tunnel, protecting traffic in transit.
 
 ## Quick Start
 
+### 1. Server: Generate Certificates
+
 ```bash
-# Default (SNI remap on, IPv6 disabled, port 1080)
-pantyhose.exe
-
-# With authentication (connections require username/password)
-pantyhose.exe --user admin --pass secret
-
-# Custom port
-pantyhose.exe --port 8899
-
-# Allow IPv6 outbound (corporate lines usually don't provide IPv6), test at https://www.whatismyip.com/
-pantyhose.exe --enable-ipv6
+pantyhose-server gencert --out ./certs/
+# Optional: specify server IP/hostname
+pantyhose-server gencert --out ./certs/ --hosts "10.0.0.5,proxy.local"
 ```
 
-> <sub>**Note**: Pantyhose continues running when Windows turns off the display (screen timeout), but will be **suspended** if the system enters **sleep or hibernation** — all connections will drop. For always-on operation, go to **Settings → System → Power & Sleep** and set "Sleep" to **Never** (you can still let the display turn off — it won't affect the proxy).</sub>
+Generated files:
+- `certs/ca.crt` — CA certificate
+- `certs/ca.key` — CA private key (keep secure!)
+- `certs/server.crt` / `certs/server.key` — Server certificate/key
+- `certs/client.pem` — Client bundle (CA cert + client cert + client key)
 
-## Client Setup
+### 2. Copy Client Certificate
+
+Copy `client.pem` to the client machine's `certs/` directory.
+
+### 3. Server: Start
+
+```bash
+# TLS encrypted mode (default, recommended — certs auto-loaded from ./certs/)
+pantyhose-server serve
+
+# Custom port
+pantyhose-server serve --port 8899
+
+# Custom certificate paths
+pantyhose-server serve --cert /path/to/server.crt --key /path/to/server.key --ca /path/to/ca.crt
+
+# Insecure mode (trusted networks only)
+pantyhose-server serve --insecure
+```
+
+### 4. Client: Connect
+
+> **macOS users**: Binaries downloaded from GitHub Releases need execute permission:
+> ```bash
+> chmod +x pantyhose-client-mac-os-apple-silicon   # Apple Silicon (M1/M2/M3/M4)
+> chmod +x pantyhose-client-mac-os-intel             # Intel Mac
+> ```
+
+```bash
+# Connect to server (default listen 127.0.0.1:1080, certs auto-loaded from certs/client.pem)
+pantyhose-client --server 10.0.0.5:1080
+
+# Custom local listen address
+pantyhose-client --server 10.0.0.5:1080 --listen 127.0.0.1:9090
+
+# Custom PEM file path
+pantyhose-client --server 10.0.0.5:1080 --pem /path/to/client.pem
+```
+
+### 5. Configure ProxyBridge
+
+Set the proxy address to `127.0.0.1:1080` (pantyhose-client's local port) in ProxyBridge.
+
+> <sub>**Note**: Windows screen timeout does not affect operation, but **sleep/hibernation** will suspend the process. Set "Sleep" to **Never** in **Settings → Power**.</sub>
+
+## Security Architecture
+
+```
+pantyhose-client ──[TLS 1.3 + mTLS]──► pantyhose-server
+       │                                       │
+   Client cert verification              Server cert verification
+   (client.pem)                        (server.crt + server.key)
+       │                                       │
+       └──── Mutual auth, signed by same CA ───┘
+```
+
+- **TLS 1.3**: All traffic encrypted end-to-end
+- **mTLS**: Server and client mutually verify certificates — no valid cert, no connection
+- **yamux multiplexing**: One TLS connection carries multiple SOCKS5 sessions, reducing handshake overhead
+- **No password auth**: Security entirely guaranteed by certificates, no SOCKS5 username/password
+
+## Client Configuration
 
 ### ProxyBridge (Recommended)
 
-[ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) is a cross-platform Proxifier alternative that intercepts all TCP/UDP traffic at the kernel level.
+[ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) is a cross-platform Proxifier alternative.
 
-1. Install ProxyBridge on the client machine (macOS/Windows/Linux)
-
-2. **Proxy Settings**: Go to **Proxy > Proxy Settings...** in the menu bar. Set **Proxy IP/Domain** to `<pantyhose machine IP>` (e.g. `10.154.38.77`), and set **Proxy Port** to the pantyhose listen port (default `1080`).
-
-![ProxyBridge Proxy Settings](proxy-bridge-pic-1.png)
-
-3. **Proxy Rules**: Go to **Proxy > Proxy Rules...** to configure routing rules. VPN-related processes and addresses (e.g. `corplink-service`, `Lark Helper`, `Feishu`, `169.254.169.254`, `172.19.10.252`) should be set to **BOTH** protocol and **DIRECT** action to bypass the proxy. All other traffic should go through the proxy.
-
-![ProxyBridge Proxy Rules](proxy-bridge-pic-2.png)
-
-> **Tip**: Disabling IPv6 in the client's system network settings can further reduce DNS pollution issues:
->
-> ```powershell
-> # Windows client
-> reg add "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" /v DisabledComponents /t REG_DWORD /d 0xFF /f
->
-> # macOS client
-> sudo networksetup -setv6off Wi-Fi
-> ```
+1. Install ProxyBridge
+2. **Proxy Settings**: Set proxy address to `127.0.0.1`, port `1080` (pantyhose-client local port)
+3. **Proxy Rules**: Set VPN-related processes to DIRECT to bypass the proxy
 
 ### Proxifier
 
-1. Install [Proxifier](https://www.proxifier.com/)
-2. Go to **Profile > Proxy Servers > Add**
-3. Enter:
-   - Address: `<pantyhose machine IP>`
-   - Port: `1080`
-   - Protocol: **SOCKS Version 5**
-   - Authentication: enter username/password if configured
-4. Set up **Proxification Rules** to route desired traffic
-5. Enable **"Resolve hostnames through proxy"** for full DNS proxying
+1. **Proxy Servers > Add**: Address `127.0.0.1`, port `1080`, protocol SOCKS5
+2. Configure routing rules
 
-## Firewall
-
-The server listens on a TCP+UDP port. Windows Firewall may block inbound connections. Run these commands **as Administrator** on the proxy machine:
+## Firewall (Server)
 
 ```powershell
-# TCP (required for all connections)
+# TCP (required)
 netsh advfirewall firewall add rule name="pantyhose-tcp" dir=in action=allow protocol=TCP localport=1080
 
-# UDP (required for UDP ASSOCIATE / QUIC / DNS proxying)
+# UDP (required for UDP ASSOCIATE)
 netsh advfirewall firewall add rule name="pantyhose-udp" dir=in action=allow protocol=UDP localport=1080
 ```
 
-Replace `1080` with your actual port if different. **Both rules are required** — missing the UDP rule will cause QUIC/HTTP3 traffic to fail with "The peer closed the flow" errors on the client.
-
-Clean up firewall rules:
-
+Cleanup:
 ```bash
-pantyhose.exe --fw-clean
-pantyhose.exe --fw-clean --port 8899  # custom port
+pantyhose-server serve --fw-clean
 ```
 
 ## Development
@@ -109,158 +142,109 @@ Requires [Go 1.21+](https://go.dev/dl/).
 ```bash
 git clone <repo-url>
 cd pantyhose
-go build -o pantyhose.exe .
+
+# Build server and client
+go build -o pantyhose-server.exe ./cmd/pantyhose-server
+go build -o pantyhose-client.exe ./cmd/pantyhose-client
+
+# Run tests
+go test -v -count=1 -timeout 60s ./...
+
+# Docker tests
+docker compose -f docker-compose.test.yml up --build
 ```
 
-### Cross-compile for Linux (optional)
+### Cross-compile
 
 ```bash
-GOOS=linux GOARCH=amd64 go build -o pantyhose .
+# macOS (Apple Silicon)
+GOOS=darwin GOARCH=arm64 go build -o pantyhose-client-mac-os-apple-silicon ./cmd/pantyhose-client
+
+# macOS (Intel)
+GOOS=darwin GOARCH=amd64 go build -o pantyhose-client-mac-os-intel ./cmd/pantyhose-client
+
+# Linux
+GOOS=linux GOARCH=amd64 go build -o pantyhose-server-linux ./cmd/pantyhose-server
 ```
 
-## Usage
+## Server Flags
 
-```txt
-pantyhose.exe [flags]
+### `pantyhose-server serve`
 
-Flags:
-  --addr string        Listen address (default "0.0.0.0")
-  --port int           Listen port (default 1080)
-  --ip string          Outbound IP for UDP replies (auto-detected if empty)
-  --user string        Username for SOCKS5 auth (no auth if empty)
-  --pass string        Password for SOCKS5 auth (no auth if empty)
-  --tcp-timeout int    TCP idle timeout in seconds (default 60)
-  --udp-timeout int    UDP session timeout in seconds (default 60)
-  --enable-ipv6        Allow IPv6 outbound (disabled by default)
-  --no-sni-remap       Disable TLS SNI hostname re-resolution (enabled by default)
-  --sni-ports string   Comma-separated ports for SNI remap (default "443")
-  --verbose            Enable verbose logging (SNI details, connection lifecycle)
-  --fw-clean           Print firewall rule cleanup commands and exit
-  --help-cn            Show help message in Chinese
-  --version            Print version and exit
-```
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--addr` | `0.0.0.0` | Listen address |
+| `--port` | `1080` | Listen port |
+| `--ip` | auto-detected | Outbound IP for UDP ASSOCIATE |
+| `--cert` | `certs/server.crt` | Server TLS certificate |
+| `--key` | `certs/server.key` | Server TLS private key |
+| `--ca` | `certs/ca.crt` | CA certificate (client verification) |
+| `--insecure` | `false` | Insecure mode (no TLS) |
+| `--tcp-timeout` | `60` | TCP idle timeout (seconds) |
+| `--udp-timeout` | `60` | UDP session timeout (seconds) |
+| `--enable-ipv6` | `false` | Allow IPv6 outbound |
+| `--no-sni-remap` | `false` | Disable SNI remap |
+| `--sni-ports` | `"443"` | SNI remap ports |
+| `--verbose` | `false` | Verbose logging |
+| `--fw-clean` | `false` | Print firewall cleanup commands and exit |
+| `--help-cn` | `false` | Show help in Chinese |
 
-### Authentication Modes
+### `pantyhose-server gencert`
 
-- **No auth**: Omit `--user` and `--pass` (or leave them empty)
-- **Username/Password**: Provide both `--user` and `--pass`
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--out` | `./certs` | Certificate output directory |
+| `--hosts` | _(empty)_ | Additional server IPs/hostnames |
+| `--days` | `3650` | Certificate validity (days) |
 
-## Flags Explained
+## Client Flags
 
-### IPv6 Handling (disabled by default / `--enable-ipv6`)
+### `pantyhose-client`
 
-**Default behavior**: IPv6 is disabled by default, and all outbound connections are forced to IPv4. This avoids connection timeouts when the client's DNS resolves to IPv6 addresses but the corporate network has no IPv6 route.
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--server` | _(required)_ | Remote server address (host:port) |
+| `--listen` | `127.0.0.1:1080` | Local SOCKS5 listen address |
+| `--pem` | `certs/client.pem` | Client PEM file (CA cert + client cert + client key) |
 
-**`--enable-ipv6`**: Enables IPv6 outbound connections. Only use this if the proxy machine has working IPv6 connectivity.
+## Key Features
 
-### SNI Remap (default on / `--no-sni-remap`)
+### TLS Encrypted Tunnel
 
-SNI remap is **enabled by default**. It solves DNS pollution from VPN clients like CorpLink.
+Enabled by default. Client and server establish an encrypted tunnel via TLS 1.3 + mTLS. All SOCKS5 traffic is transmitted inside the tunnel. Uses yamux multiplexing — one TLS connection carries multiple SOCKS5 sessions.
 
-**Problem**: The client machine's DNS is polluted (e.g. by a VPN client that returns fake IPs for certain domains). Tools like [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) intercept traffic at the kernel level and send already-resolved IP addresses — not domain names — to the SOCKS5 proxy. The proxy connects to the fake IP and fails.
+Auto-reconnect on disconnection (exponential backoff: 1s → 2s → 4s → ... → 60s max).
 
-**Solution**: Pantyhose intercepts HTTPS connections (port 443 by default) and reads the TLS ClientHello to extract the SNI (Server Name Indication) hostname. It then re-resolves that hostname using the proxy machine's local DNS (which returns correct IPs) and connects to the correct destination.
+### SNI Remap (enabled by default)
 
-**How it works**:
+Fixes VPN DNS pollution. Intercepts HTTPS connections, extracts the SNI hostname from TLS ClientHello, and re-resolves it via the server's DNS.
 
-```txt
-1. Client DNS (polluted):  youtube.com → 185.45.5.35 (fake IP)
-2. ProxyBridge sends:      CONNECT 185.45.5.35:443
-3. Pantyhose reads TLS ClientHello → SNI = "www.youtube.com"
-4. Pantyhose re-resolves:  youtube.com → 142.251.10.91 (correct IP via corporate DNS)
-5. Pantyhose connects to:  142.251.10.91:443 ✓
-```
+### IPv6 Handling (disabled by default)
 
-**`--no-sni-remap`**: Disables SNI remap entirely. Use this if you don't have DNS pollution issues and want a plain SOCKS5 proxy.
-
-**Limitation**: Only works for TLS traffic since it relies on TLS SNI. Non-TLS traffic is handled gracefully (falls back to direct connection).
-
-By default only port 443 is intercepted. Use `--sni-ports` to add custom ports:
-
-```bash
-# Also sniff SNI on ports 8443 and 4443
-pantyhose.exe --sni-ports 443,8443,4443
-```
-
-### Default Configuration
-
-Just running `pantyhose.exe` with no flags gives you the **recommended configuration**:
-
-- SNI remap enabled (fixes DNS pollution)
-- IPv6 disabled (avoids timeouts)
-- Listening on `0.0.0.0:1080`
-- No authentication
+IPv6 outbound is disabled by default to avoid connection timeouts on corporate networks without IPv6 routes. Enable with `--enable-ipv6`.
 
 ## Troubleshooting
 
-### Client can't connect at all
+### Client can't connect to server
 
-- Verify the proxy machine's IP is reachable from the client: `ping <proxy-ip>`
-- Check that both TCP and UDP firewall rules are in place (see Firewall section)
-- Ensure pantyhose is running and listening: check for `SOCKS5 server listening on ...` in logs
+- Verify server IP is reachable: `ping <server-ip>`
+- Check firewall rules
+- Verify certificate file is correct (client.pem)
+- Check client logs for TLS errors
 
-### IPv6 connection timeouts
-
-```txt
-dial tcp [2404:6800:4012:6::200e]:443: connectex: A connection attempt failed...
-```
-
-The proxy machine has no IPv6 connectivity. IPv6 is disabled by default, so this should not occur. If it does, check whether `--enable-ipv6` was added by mistake.
-
-### DNS pollution (wrong IPs, sites fail that work on proxy machine)
-
-```txt
-dial tcp4 185.45.5.35:443: connectex: A connection attempt failed...
-```
-
-The client's DNS returns fake IPs. SNI remap is enabled by default and should handle this. Verify by comparing DNS results:
+### DNS Pollution (SNI remap related)
 
 ```bash
-# On client machine
-nslookup www.youtube.com
-# On proxy machine
-nslookup www.youtube.com
+# Compare DNS results between client and server
+nslookup www.youtube.com  # on client
+nslookup www.youtube.com  # on server
 ```
 
-If they return different IPs, DNS pollution is the cause.
+If results differ, DNS pollution exists. SNI remap handles this by default.
 
-### "The peer closed the flow" (ProxyBridge)
+### Certificate Expired
 
-UDP firewall rule is missing. Add the UDP rule (see Firewall section).
-
-### Some sites work on proxy machine but not through proxy
-
-- If those sites use HTTPS: ensure SNI remap is active (enabled by default, check logs for "SNI remap enabled")
-- If those sites use HTTP only: the client's DNS returns a fake IP and there's no SNI to extract. Consider adding the correct IP to the client's `/etc/hosts`
-
-## Testing
-
-### Automated Tests
-
-```bash
-go test -v -count=1 -timeout 60s ./...
-```
-
-### Manual Verification via WSL or Another Machine
-
-```bash
-# Test Network
-curl ipinfo.io/json
-
-# Test TCP proxy (no auth)
-curl --socks5 <host-ip>:1080 http://httpbin.org/ip
-
-# Test TCP proxy (with auth)
-curl --socks5 <host-ip>:1080 --proxy-user admin:secret http://httpbin.org/ip
-
-# Test DNS resolution through proxy
-curl --socks5-hostname <host-ip>:1080 http://httpbin.org/ip
-
-# Test HTTPS through proxy
-curl --socks5 <host-ip>:1080 https://www.google.com -o /dev/null -w "%{http_code}\n"
-```
-
-Replace `<host-ip>` with the proxy machine's LAN IP (shown in startup logs as "Using outbound IP: x.x.x.x").
+Re-run `pantyhose-server gencert` to generate new certificates, then replace the client's certificate file.
 
 ## License
 

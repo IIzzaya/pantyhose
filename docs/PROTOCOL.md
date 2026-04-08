@@ -38,7 +38,7 @@ tls.Config{
     ClientCAs:  caPool,  // 用 CA 证书验证客户端证书
 }
 ```
-只有持有 CA 签发的合法 `client.crt` + `client.key` 的客户端才能连接。
+只有持有 CA 签发的合法客户端证书和私钥（打包在 `client.pem` 中）的客户端才能连接。
 
 **客户端验证服务端**：
 ```go
@@ -58,7 +58,7 @@ Pantyhose CA (ca.crt / ca.key)
 │   ├── SAN: 127.0.0.1 + 用户指定的 hosts
 │   └── ExtKeyUsage: ServerAuth, ClientAuth
 │
-└── pantyhose-client (client.crt / client.key)
+└── pantyhose-client (client.pem: CA cert + client cert + client key)
     ├── CN: pantyhose-client
     ├── SAN: 127.0.0.1
     └── ExtKeyUsage: ServerAuth, ClientAuth
@@ -215,7 +215,7 @@ TLS Record Header (5 bytes)
 默认仅对目标端口 443 生效。可通过 `--sni-ports` 自定义：
 
 ```bash
-pantyhose-server serve --sni-ports 443,8443,9443 ...
+pantyhose-server serve --sni-ports 443,8443,9443
 ```
 
 ---
