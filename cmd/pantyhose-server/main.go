@@ -66,8 +66,6 @@ func main() {
 	addr := flag.String("addr", "0.0.0.0", "Listen address (IP or host:port; use --port to set port separately)")
 	port := flag.Int("port", 1080, "Listen port (combined with --addr)")
 	ip := flag.String("ip", "", "Outbound IP for UDP ASSOCIATE replies (auto-detected if empty)")
-	user := flag.String("user", "", "Username for SOCKS5 auth (no auth if empty)")
-	pass := flag.String("pass", "", "Password for SOCKS5 auth (no auth if empty)")
 	tcpTimeout := flag.Int("tcp-timeout", 60, "TCP connection idle timeout in seconds")
 	udpTimeout := flag.Int("udp-timeout", 60, "UDP session timeout in seconds")
 	enableIPv6 := flag.Bool("enable-ipv6", false, "Allow IPv6 outbound connections (default: IPv6 auto-disabled if unavailable)")
@@ -134,15 +132,9 @@ func main() {
 	}
 	log.Printf("Using outbound IP: %s", outboundIP)
 
-	authMode := "none"
-	if *user != "" && *pass != "" {
-		authMode = "username/password"
-	}
-	log.Printf("Auth mode: %s", authMode)
-
 	checkFirewall(portStr)
 
-	server, err := socks5.NewClassicServer(listenAddr, outboundIP, *user, *pass, *tcpTimeout, *udpTimeout)
+	server, err := socks5.NewClassicServer(listenAddr, outboundIP, "", "", *tcpTimeout, *udpTimeout)
 	if err != nil {
 		log.Fatalf("Failed to create SOCKS5 server: %v", err)
 	}
@@ -287,16 +279,14 @@ func checkFirewallRules(port string) (tcpOk, udpOk bool) {
 }
 
 func printHelpCN() {
-	fmt.Printf(`pantyhose %s - SOCKS5 forward proxy server
+	fmt.Printf(`pantyhose-server %s - SOCKS5 forward proxy server
 
-用法: pantyhose [参数]
+用法: pantyhose-server [serve] [参数]
 
 参数:
   --addr string        监听地址，可以是 IP 或 host:port 格式 (默认 "0.0.0.0")
   --port int           监听端口，与 --addr 组合使用 (默认 1080)
   --ip string          UDP ASSOCIATE 回复使用的出站 IP（留空则自动检测）
-  --user string        SOCKS5 认证用户名（留空则不启用认证）
-  --pass string        SOCKS5 认证密码（留空则不启用认证）
   --tcp-timeout int    TCP 连接空闲超时，单位秒 (默认 60)
   --udp-timeout int    UDP 会话超时，单位秒 (默认 60)
   --enable-ipv6        允许 IPv6 出站连接（默认自动检测，不可用时禁用）
@@ -308,12 +298,11 @@ func printHelpCN() {
   --version            显示版本号后退出
 
 示例:
-  pantyhose.exe                                    # 默认配置启动（SNI remap 开启，IPv6 自动检测）
-  pantyhose.exe --port 8899                        # 监听 8899 端口
-  pantyhose.exe --enable-ipv6                      # 允许 IPv6 出站连接
-  pantyhose.exe --no-sni-remap                     # 禁用 SNI 域名重映射
-  pantyhose.exe --user admin --pass secret         # 启用用户名密码认证
-  pantyhose.exe --fw-clean --port 8899             # 输出清理 8899 端口防火墙规则的命令
+  pantyhose-server --insecure                      # 非加密模式启动
+  pantyhose-server --port 8899 --insecure          # 监听 8899 端口
+  pantyhose-server --enable-ipv6 --insecure        # 允许 IPv6 出站连接
+  pantyhose-server --no-sni-remap --insecure       # 禁用 SNI 域名重映射
+  pantyhose-server --fw-clean --port 8899          # 输出清理 8899 端口防火墙规则的命令
 `, version)
 }
 

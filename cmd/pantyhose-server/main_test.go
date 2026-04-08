@@ -22,10 +22,10 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-func startTestServer(t *testing.T, port int, username, password string) *socks5.Server {
+func startTestServer(t *testing.T, port int) *socks5.Server {
 	t.Helper()
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	server, err := socks5.NewClassicServer(addr, "127.0.0.1", username, password, 10, 10)
+	server, err := socks5.NewClassicServer(addr, "127.0.0.1", "", "", 10, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,12 +123,12 @@ func TestIsShutdownError(t *testing.T) {
 
 // --- Integration tests ---
 
-func TestTCPProxyNoAuth(t *testing.T) {
+func TestTCPProxy(t *testing.T) {
 	httpAddr, cleanup := startHTTPEcho(t)
 	defer cleanup()
 
 	port := freePort(t)
-	server := startTestServer(t, port, "", "")
+	server := startTestServer(t, port)
 	defer server.Shutdown()
 
 	client, err := socks5.NewClient(fmt.Sprintf("127.0.0.1:%d", port), "", "", 10, 10)
@@ -154,58 +154,11 @@ func TestTCPProxyNoAuth(t *testing.T) {
 	}
 }
 
-func TestTCPProxyWithAuth(t *testing.T) {
-	httpAddr, cleanup := startHTTPEcho(t)
-	defer cleanup()
-
-	port := freePort(t)
-	server := startTestServer(t, port, "admin", "secret")
-	defer server.Shutdown()
-
-	client, err := socks5.NewClient(fmt.Sprintf("127.0.0.1:%d", port), "admin", "secret", 10, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			Dial: func(network, addr string) (net.Conn, error) {
-				return client.Dial(network, addr)
-			},
-		},
-		Timeout: 5 * time.Second,
-	}
-	resp, err := httpClient.Get(fmt.Sprintf("http://%s/ping", httpAddr))
-	if err != nil {
-		t.Fatalf("GET through proxy failed: %v", err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	if string(body) != "pong" {
-		t.Errorf("expected body 'pong', got %q", string(body))
-	}
-}
-
-func TestTCPProxyAuthRejected(t *testing.T) {
-	port := freePort(t)
-	server := startTestServer(t, port, "admin", "secret")
-	defer server.Shutdown()
-
-	client, err := socks5.NewClient(fmt.Sprintf("127.0.0.1:%d", port), "admin", "wrong", 10, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = client.Dial("tcp", "127.0.0.1:80")
-	if err == nil {
-		t.Fatal("expected auth rejection, got nil error")
-	}
-	t.Logf("Auth correctly rejected: %v", err)
-}
-
 func TestTCPRawConnect(t *testing.T) {
 	echoAddr := startTCPEcho(t)
 
 	port := freePort(t)
-	server := startTestServer(t, port, "", "")
+	server := startTestServer(t, port)
 	defer server.Shutdown()
 
 	client, err := socks5.NewClient(fmt.Sprintf("127.0.0.1:%d", port), "", "", 10, 10)
@@ -316,7 +269,7 @@ func defaultDialUDP() func(string, string, string) (net.Conn, error) {
 
 func TestServerShutdown(t *testing.T) {
 	port := freePort(t)
-	server := startTestServer(t, port, "", "")
+	server := startTestServer(t, port)
 
 	err := server.Shutdown()
 	if err != nil {
