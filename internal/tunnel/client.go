@@ -3,6 +3,7 @@ package tunnel
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"log"
 	"net"
@@ -25,7 +26,7 @@ type Client struct {
 }
 
 // NewClient creates a tunnel client that connects to the given server address
-// using mTLS.
+// using mTLS with separate cert, key, and CA files.
 func NewClient(serverAddr, certFile, keyFile, caFile string) (*Client, error) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -41,6 +42,62 @@ func NewClient(serverAddr, certFile, keyFile, caFile string) (*Client, error) {
 		return nil, fmt.Errorf("invalid CA certificate")
 	}
 
+	return newClient(serverAddr, cert, caPool)
+}
+
+// NewClientFromPEM creates a tunnel client from a single PEM file containing
+// CA certificate, client certificate, and client private key.
+func NewClientFromPEM(serverAddr, pemFile string) (*Client, error) {
+	data, err := os.ReadFile(pemFile)
+	if err != nil {
+		return nil, fmt.Errorf("read PEM file: %w", err)
+	}
+
+	var certs [][]byte
+	var keyDER []byte
+	rest := data
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		switch block.Type {
+		case "CERTIFICATE":
+			certs = append(certs, block.Bytes)
+		case "EC PRIVATE KEY", "PRIVATE KEY":
+			keyDER = block.Bytes
+		}
+	}
+
+	if len(certs) < 2 {
+		return nil, fmt.Errorf("PEM file must contain at least 2 certificates (CA + client)")
+	}
+	if keyDER == nil {
+		return nil, fmt.Errorf("PEM file must contain a private key")
+	}
+
+	caPool := x509.NewCertPool()
+	caCert, err := x509.ParseCertificate(certs[0])
+	if err != nil {
+		return nil, fmt.Errorf("parse CA certificate: %w", err)
+	}
+	caPool.AddCert(caCert)
+
+	privateKey, err := x509.ParseECPrivateKey(keyDER)
+	if err != nil {
+		return nil, fmt.Errorf("parse private key: %w", err)
+	}
+
+	clientCert := tls.Certificate{
+		Certificate: [][]byte{certs[1]},
+		PrivateKey:  privateKey,
+	}
+
+	return newClient(serverAddr, clientCert, caPool)
+}
+
+func newClient(serverAddr string, cert tls.Certificate, caPool *x509.CertPool) (*Client, error) {
 	host, _, err := net.SplitHostPort(serverAddr)
 	if err != nil {
 		host = serverAddr

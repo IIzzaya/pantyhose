@@ -45,9 +45,9 @@ func TestTunnelServerClient(t *testing.T) {
 		}
 	}()
 
-	client, err := NewClient(srvAddr, certs.ClientCert, certs.ClientKey, certs.CACert)
+	client, err := NewClientFromPEM(srvAddr, certs.ClientPEM)
 	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+		t.Fatalf("NewClientFromPEM: %v", err)
 	}
 	defer client.Close()
 
@@ -99,9 +99,9 @@ func TestTunnelMultipleStreams(t *testing.T) {
 		}
 	}()
 
-	client, err := NewClient(srv.Addr().String(), certs.ClientCert, certs.ClientKey, certs.CACert)
+	client, err := NewClientFromPEM(srv.Addr().String(), certs.ClientPEM)
 	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+		t.Fatalf("NewClientFromPEM: %v", err)
 	}
 	defer client.Close()
 
@@ -174,9 +174,9 @@ func TestTunnelRejectWrongCA(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client, err := NewClient(srv.Addr().String(), otherCerts.ClientCert, otherCerts.ClientKey, otherCerts.CACert)
+	client, err := NewClientFromPEM(srv.Addr().String(), otherCerts.ClientPEM)
 	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+		t.Fatalf("NewClientFromPEM: %v", err)
 	}
 	defer client.Close()
 
@@ -207,13 +207,10 @@ func TestNewServerInvalidCert(t *testing.T) {
 	}
 }
 
-func TestNewClientInvalidCert(t *testing.T) {
+func TestNewClientFromPEMInvalid(t *testing.T) {
 	dir := t.TempDir()
-	_, err := NewClient("127.0.0.1:9999",
-		filepath.Join(dir, "nonexistent.crt"),
-		filepath.Join(dir, "nonexistent.key"),
-		filepath.Join(dir, "nonexistent-ca.crt"))
+	_, err := NewClientFromPEM("127.0.0.1:9999", filepath.Join(dir, "nonexistent.pem"))
 	if err == nil {
-		t.Error("expected error with nonexistent cert files")
+		t.Error("expected error with nonexistent PEM file")
 	}
 }

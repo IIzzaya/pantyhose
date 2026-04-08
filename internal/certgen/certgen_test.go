@@ -1,7 +1,6 @@
 package certgen
 
 import (
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"os"
@@ -16,7 +15,7 @@ func TestGenerate(t *testing.T) {
 		t.Fatalf("Generate failed: %v", err)
 	}
 
-	expectedFiles := []string{"ca.crt", "ca.key", "server.crt", "server.key", "client.crt", "client.key"}
+	expectedFiles := []string{"ca.crt", "ca.key", "server.crt", "server.key", "client.pem"}
 	for _, name := range expectedFiles {
 		path := filepath.Join(dir, name)
 		info, err := os.Stat(path)
@@ -48,14 +47,54 @@ func TestGenerate(t *testing.T) {
 	caPool := x509.NewCertPool()
 	caPool.AddCert(caCert)
 
-	if _, err := tls.LoadX509KeyPair(files.ServerCert, files.ServerKey); err != nil {
-		t.Fatalf("server cert/key pair invalid: %v", err)
+	// Verify client.pem contains 3 PEM blocks: CA cert, client cert, client key
+	clientPEM, err := os.ReadFile(files.ClientPEM)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if _, err := tls.LoadX509KeyPair(files.ClientCert, files.ClientKey); err != nil {
-		t.Fatalf("client cert/key pair invalid: %v", err)
+	var blocks []*pem.Block
+	rest := clientPEM
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		blocks = append(blocks, block)
+	}
+	if len(blocks) != 3 {
+		t.Fatalf("client.pem should contain 3 PEM blocks, got %d", len(blocks))
+	}
+	if blocks[0].Type != "CERTIFICATE" {
+		t.Errorf("block 0 should be CERTIFICATE, got %s", blocks[0].Type)
+	}
+	if blocks[1].Type != "CERTIFICATE" {
+		t.Errorf("block 1 should be CERTIFICATE, got %s", blocks[1].Type)
+	}
+	if blocks[2].Type != "EC PRIVATE KEY" {
+		t.Errorf("block 2 should be EC PRIVATE KEY, got %s", blocks[2].Type)
 	}
 
+	// First cert in client.pem should be the CA cert
+	pemCACert, err := x509.ParseCertificate(blocks[0].Bytes)
+	if err != nil {
+		t.Fatalf("parse CA cert from client.pem: %v", err)
+	}
+	if !pemCACert.IsCA {
+		t.Error("first cert in client.pem should be CA")
+	}
+
+	// Second cert should be the client cert, signed by CA
+	clientCert, err := x509.ParseCertificate(blocks[1].Bytes)
+	if err != nil {
+		t.Fatalf("parse client cert from client.pem: %v", err)
+	}
+	if _, err := clientCert.Verify(x509.VerifyOptions{Roots: caPool}); err != nil {
+		t.Errorf("client cert not signed by CA: %v", err)
+	}
+
+	// Verify server cert
 	serverCertPEM, err := os.ReadFile(files.ServerCert)
 	if err != nil {
 		t.Fatal(err)
@@ -67,19 +106,6 @@ func TestGenerate(t *testing.T) {
 	}
 	if _, err := serverCert.Verify(x509.VerifyOptions{Roots: caPool}); err != nil {
 		t.Errorf("server cert not signed by CA: %v", err)
-	}
-
-	clientCertPEM, err := os.ReadFile(files.ClientCert)
-	if err != nil {
-		t.Fatal(err)
-	}
-	clientBlock, _ := pem.Decode(clientCertPEM)
-	clientCert, err := x509.ParseCertificate(clientBlock.Bytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := clientCert.Verify(x509.VerifyOptions{Roots: caPool}); err != nil {
-		t.Errorf("client cert not signed by CA: %v", err)
 	}
 
 	found127 := false

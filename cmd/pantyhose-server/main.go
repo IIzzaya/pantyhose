@@ -135,13 +135,12 @@ func runGencert(args []string) {
 	fmt.Fprintf(os.Stderr, "  %s  (CA private key - keep secure!)\n", files.CAKey)
 	fmt.Fprintf(os.Stderr, "  %s  (server certificate)\n", files.ServerCert)
 	fmt.Fprintf(os.Stderr, "  %s  (server private key)\n", files.ServerKey)
-	fmt.Fprintf(os.Stderr, "  %s  (client certificate)\n", files.ClientCert)
-	fmt.Fprintf(os.Stderr, "  %s  (client private key)\n", files.ClientKey)
+	fmt.Fprintf(os.Stderr, "  %s  (client bundle: CA cert + client cert + client key)\n", files.ClientPEM)
 	fmt.Fprintf(os.Stderr, "\nServer usage:\n")
 	fmt.Fprintf(os.Stderr, "  pantyhose-server serve\n\n")
 	fmt.Fprintf(os.Stderr, "Client usage:\n")
-	fmt.Fprintf(os.Stderr, "  pantyhose-client --server <host>:1080 --ca %s --cert %s --key %s\n\n", files.CACert, files.ClientCert, files.ClientKey)
-	fmt.Fprintf(os.Stderr, "Copy to client machine: %s, %s, %s\n", files.CACert, files.ClientCert, files.ClientKey)
+	fmt.Fprintf(os.Stderr, "  pantyhose-client --server <host>:1080\n\n")
+	fmt.Fprintf(os.Stderr, "Copy to client machine: %s\n", files.ClientPEM)
 }
 
 func runServe(args []string) {

@@ -40,7 +40,7 @@ func TestTunnelE2E(t *testing.T) {
 	go serveTLSMode(tunnelSrv, srv, nil, 10)
 
 	// Start local tunnel client
-	tunnelClient, err := tunnel.NewClient(tunnelSrv.Addr().String(), certs.ClientCert, certs.ClientKey, certs.CACert)
+	tunnelClient, err := tunnel.NewClientFromPEM(tunnelSrv.Addr().String(), certs.ClientPEM)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestTunnelE2EWithSNI(t *testing.T) {
 	sniHandler := &SNIRemapHandler{TCPTimeout: 10, UDPTimeout: 10, IPv4Only: false}
 	go serveTLSMode(tunnelSrv, srv, sniHandler, 10)
 
-	tunnelClient, err := tunnel.NewClient(tunnelSrv.Addr().String(), certs.ClientCert, certs.ClientKey, certs.CACert)
+	tunnelClient, err := tunnel.NewClientFromPEM(tunnelSrv.Addr().String(), certs.ClientPEM)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestTunnelE2ERawTCP(t *testing.T) {
 
 	go serveTLSMode(tunnelSrv, srv, nil, 10)
 
-	tunnelClient, err := tunnel.NewClient(tunnelSrv.Addr().String(), certs.ClientCert, certs.ClientKey, certs.CACert)
+	tunnelClient, err := tunnel.NewClientFromPEM(tunnelSrv.Addr().String(), certs.ClientPEM)
 	if err != nil {
 		t.Fatal(err)
 	}

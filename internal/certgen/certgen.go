@@ -20,8 +20,7 @@ type CertFiles struct {
 	CAKey      string
 	ServerCert string
 	ServerKey  string
-	ClientCert string
-	ClientKey  string
+	ClientPEM  string
 }
 
 // Generate creates a self-signed CA, server certificate, and client certificate
@@ -52,8 +51,7 @@ func Generate(outDir string, serverHosts []string, validDays int) (*CertFiles, e
 		CAKey:      filepath.Join(outDir, "ca.key"),
 		ServerCert: filepath.Join(outDir, "server.crt"),
 		ServerKey:  filepath.Join(outDir, "server.key"),
-		ClientCert: filepath.Join(outDir, "client.crt"),
-		ClientKey:  filepath.Join(outDir, "client.key"),
+		ClientPEM:  filepath.Join(outDir, "client.pem"),
 	}
 
 	if err := writePEM(files.CACert, "CERTIFICATE", caCertDER); err != nil {
@@ -78,14 +76,11 @@ func Generate(outDir string, serverHosts []string, validDays int) (*CertFiles, e
 		return nil, err
 	}
 
-	if err := writePEM(files.ClientCert, "CERTIFICATE", clientCertDER); err != nil {
-		return nil, err
-	}
 	clientKeyDER, err := x509.MarshalECPrivateKey(clientKey)
 	if err != nil {
 		return nil, fmt.Errorf("marshal client key: %w", err)
 	}
-	if err := writePEM(files.ClientKey, "EC PRIVATE KEY", clientKeyDER); err != nil {
+	if err := writeCombinedPEM(files.ClientPEM, caCertDER, clientCertDER, clientKeyDER); err != nil {
 		return nil, err
 	}
 
@@ -174,4 +169,24 @@ func writePEM(path, blockType string, data []byte) error {
 	}
 	defer f.Close()
 	return pem.Encode(f, &pem.Block{Type: blockType, Bytes: data})
+}
+
+// writeCombinedPEM writes CA cert + client cert + client key into a single PEM file.
+func writeCombinedPEM(path string, caCertDER, clientCertDER, clientKeyDER []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	defer f.Close()
+	blocks := []pem.Block{
+		{Type: "CERTIFICATE", Bytes: caCertDER},
+		{Type: "CERTIFICATE", Bytes: clientCertDER},
+		{Type: "EC PRIVATE KEY", Bytes: clientKeyDER},
+	}
+	for _, b := range blocks {
+		if err := pem.Encode(f, &b); err != nil {
+			return err
+		}
+	}
+	return nil
 }

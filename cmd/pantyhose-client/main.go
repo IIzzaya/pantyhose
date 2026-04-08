@@ -20,9 +20,7 @@ func main() {
 
 	server := flag.String("server", "", "Remote pantyhose-server address (host:port)")
 	listen := flag.String("listen", "127.0.0.1:1080", "Local SOCKS5 listen address")
-	certFile := flag.String("cert", "certs/client.crt", "Client TLS certificate file")
-	keyFile := flag.String("key", "certs/client.key", "Client TLS private key file")
-	caFile := flag.String("ca", "certs/ca.crt", "CA certificate file for server verification")
+	pemFile := flag.String("pem", "certs/client.pem", "Client PEM file (contains CA cert + client cert + client key)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
@@ -39,29 +37,18 @@ func main() {
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Optional:")
 		fmt.Fprintln(os.Stderr, "  --listen   Local SOCKS5 listen address (default: 127.0.0.1:1080)")
-		fmt.Fprintln(os.Stderr, "  --cert     Client certificate file (default: certs/client.crt)")
-		fmt.Fprintln(os.Stderr, "  --key      Client private key file (default: certs/client.key)")
-		fmt.Fprintln(os.Stderr, "  --ca       CA certificate file (default: certs/ca.crt)")
+		fmt.Fprintln(os.Stderr, "  --pem      Client PEM file (default: certs/client.pem)")
 		os.Exit(1)
 	}
 
-	var missing []string
-	for _, f := range []string{*certFile, *keyFile, *caFile} {
-		if _, err := os.Stat(f); err != nil {
-			missing = append(missing, f)
-		}
-	}
-	if len(missing) > 0 {
-		fmt.Fprintln(os.Stderr, "Certificate files not found:")
-		for _, m := range missing {
-			fmt.Fprintf(os.Stderr, "  - %s\n", m)
-		}
+	if _, err := os.Stat(*pemFile); err != nil {
+		fmt.Fprintf(os.Stderr, "Client PEM file not found: %s\n", *pemFile)
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Copy ca.crt, client.crt, client.key from the server machine to ./certs/")
+		fmt.Fprintln(os.Stderr, "Copy client.pem from the server machine to ./certs/")
 		os.Exit(1)
 	}
 
-	client, err := tunnel.NewClient(*server, *certFile, *keyFile, *caFile)
+	client, err := tunnel.NewClientFromPEM(*server, *pemFile)
 	if err != nil {
 		log.Fatalf("Failed to create tunnel client: %v", err)
 	}
