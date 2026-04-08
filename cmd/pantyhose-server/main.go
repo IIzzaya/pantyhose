@@ -79,6 +79,21 @@ func runGencert(args []string) {
 		}
 	}
 
+	detectedIP, err := detectOutboundIP()
+	if err == nil && detectedIP != "127.0.0.1" {
+		found := false
+		for _, h := range serverHosts {
+			if h == detectedIP {
+				found = true
+				break
+			}
+		}
+		if !found {
+			serverHosts = append(serverHosts, detectedIP)
+			log.Printf("Auto-detected server IP: %s (added to certificate SAN)", detectedIP)
+		}
+	}
+
 	log.Printf("Generating certificates in %s (valid for %d days)...", *outDir, *days)
 	files, err := certgen.Generate(*outDir, serverHosts, *days)
 	if err != nil {
