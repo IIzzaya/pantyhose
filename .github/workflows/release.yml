@@ -33,29 +33,29 @@ jobs:
 
           # Server builds
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
-            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-windows-amd64.exe ./cmd/pantyhose-server
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-windows.exe ./cmd/pantyhose-server
 
           GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 \
-            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-darwin-amd64 ./cmd/pantyhose-server
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-mac-os-intel ./cmd/pantyhose-server
 
           GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
-            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-darwin-arm64 ./cmd/pantyhose-server
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-mac-os-apple-silicon ./cmd/pantyhose-server
 
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-linux-amd64 ./cmd/pantyhose-server
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-linux ./cmd/pantyhose-server
 
           # Client builds
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
-            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-windows-amd64.exe ./cmd/pantyhose-client
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-windows.exe ./cmd/pantyhose-client
 
           GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 \
-            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-darwin-amd64 ./cmd/pantyhose-client
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-mac-os-intel ./cmd/pantyhose-client
 
           GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
-            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-darwin-arm64 ./cmd/pantyhose-client
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-mac-os-apple-silicon ./cmd/pantyhose-client
 
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-linux-amd64 ./cmd/pantyhose-client
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-linux ./cmd/pantyhose-client
 
       - name: Create Release
         env:
@@ -64,11 +64,11 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             --title "${{ github.ref_name }}" \
             --generate-notes \
-            pantyhose-server-windows-amd64.exe \
-            pantyhose-server-darwin-amd64 \
-            pantyhose-server-darwin-arm64 \
-            pantyhose-server-linux-amd64 \
-            pantyhose-client-windows-amd64.exe \
-            pantyhose-client-darwin-amd64 \
-            pantyhose-client-darwin-arm64 \
-            pantyhose-client-linux-amd64
+            pantyhose-server-windows.exe \
+            pantyhose-server-mac-os-intel \
+            pantyhose-server-mac-os-apple-silicon \
+            pantyhose-server-linux \
+            pantyhose-client-windows.exe \
+            pantyhose-client-mac-os-intel \
+            pantyhose-client-mac-os-apple-silicon \
+            pantyhose-client-linux
