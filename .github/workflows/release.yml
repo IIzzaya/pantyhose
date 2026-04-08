@@ -20,19 +20,42 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Run tests
+        run: go test -v -count=1 -timeout 120s ./...
+
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build Windows amd64
-        env:
-          GOOS: windows
-          GOARCH: amd64
-          CGO_ENABLED: "0"
+      - name: Build all platforms
         run: |
-          go build -trimpath \
-            -ldflags "-s -w -X main.version=${{ steps.version.outputs.VERSION }}" \
-            -o pantyhose.exe .
+          LDFLAGS="-s -w -X main.version=${{ steps.version.outputs.VERSION }}"
+
+          # Server builds
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-windows-amd64.exe ./cmd/pantyhose-server
+
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-darwin-amd64 ./cmd/pantyhose-server
+
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-darwin-arm64 ./cmd/pantyhose-server
+
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-server-linux-amd64 ./cmd/pantyhose-server
+
+          # Client builds
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-windows-amd64.exe ./cmd/pantyhose-client
+
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-darwin-amd64 ./cmd/pantyhose-client
+
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-darwin-arm64 ./cmd/pantyhose-client
+
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "$LDFLAGS" -o pantyhose-client-linux-amd64 ./cmd/pantyhose-client
 
       - name: Create Release
         env:
@@ -41,4 +64,11 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             --title "${{ github.ref_name }}" \
             --generate-notes \
-            pantyhose.exe
+            pantyhose-server-windows-amd64.exe \
+            pantyhose-server-darwin-amd64 \
+            pantyhose-server-darwin-arm64 \
+            pantyhose-server-linux-amd64 \
+            pantyhose-client-windows-amd64.exe \
+            pantyhose-client-darwin-amd64 \
+            pantyhose-client-darwin-arm64 \
+            pantyhose-client-linux-amd64
