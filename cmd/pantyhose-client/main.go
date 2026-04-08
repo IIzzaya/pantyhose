@@ -20,9 +20,9 @@ func main() {
 
 	server := flag.String("server", "", "Remote pantyhose-server address (host:port)")
 	listen := flag.String("listen", "127.0.0.1:1080", "Local SOCKS5 listen address")
-	certFile := flag.String("cert", "", "Client TLS certificate file")
-	keyFile := flag.String("key", "", "Client TLS private key file")
-	caFile := flag.String("ca", "", "CA certificate file for server verification")
+	certFile := flag.String("cert", "certs/client.crt", "Client TLS certificate file")
+	keyFile := flag.String("key", "certs/client.key", "Client TLS private key file")
+	caFile := flag.String("ca", "certs/ca.crt", "CA certificate file for server verification")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
@@ -31,15 +31,33 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *server == "" || *certFile == "" || *keyFile == "" || *caFile == "" {
-		fmt.Fprintln(os.Stderr, "Usage: pantyhose-client --server <host:port> --cert <file> --key <file> --ca <file>")
-		fmt.Fprintln(os.Stderr, "\nAll flags are required:")
-		fmt.Fprintln(os.Stderr, "  --server   Remote pantyhose-server address")
-		fmt.Fprintln(os.Stderr, "  --cert     Client certificate file")
-		fmt.Fprintln(os.Stderr, "  --key      Client private key file")
-		fmt.Fprintln(os.Stderr, "  --ca       CA certificate file")
-		fmt.Fprintln(os.Stderr, "\nOptional:")
+	if *server == "" {
+		fmt.Fprintln(os.Stderr, "Usage: pantyhose-client --server <host:port>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Required:")
+		fmt.Fprintln(os.Stderr, "  --server   Remote pantyhose-server address (host:port)")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Optional:")
 		fmt.Fprintln(os.Stderr, "  --listen   Local SOCKS5 listen address (default: 127.0.0.1:1080)")
+		fmt.Fprintln(os.Stderr, "  --cert     Client certificate file (default: certs/client.crt)")
+		fmt.Fprintln(os.Stderr, "  --key      Client private key file (default: certs/client.key)")
+		fmt.Fprintln(os.Stderr, "  --ca       CA certificate file (default: certs/ca.crt)")
+		os.Exit(1)
+	}
+
+	var missing []string
+	for _, f := range []string{*certFile, *keyFile, *caFile} {
+		if _, err := os.Stat(f); err != nil {
+			missing = append(missing, f)
+		}
+	}
+	if len(missing) > 0 {
+		fmt.Fprintln(os.Stderr, "Certificate files not found:")
+		for _, m := range missing {
+			fmt.Fprintf(os.Stderr, "  - %s\n", m)
+		}
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Copy ca.crt, client.crt, client.key from the server machine to ./certs/")
 		os.Exit(1)
 	}
 
