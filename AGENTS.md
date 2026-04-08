@@ -110,6 +110,7 @@ docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
 | `docs/DESIGN.md` | Design decisions record (Chinese) — all architectural choices with rationale |
 | `docs/ARCHITECTURE.md` | System architecture (Chinese) — component diagrams, directory structure, data flow |
 | `docs/PROTOCOL.md` | Protocol & security details (Chinese) — TLS, yamux, SOCKS5, SNI remap, reconnection |
+| `docs/CERTIFICATES.md` | Certificate management guide (Chinese) — generation, distribution, renewal |
 | `AGENTS.md` | This file — AI agent development guidance |
 | `README.md` | Human-facing usage documentation (Chinese) |
 | `README_EN.md` | Human-facing usage documentation (English) |
