@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -16,11 +17,12 @@ import (
 )
 
 type CertFiles struct {
-	CACert     string
-	CAKey      string
-	ServerCert string
-	ServerKey  string
-	ClientPEM  string
+	CACert        string
+	CAKey         string
+	ServerCert    string
+	ServerKey     string
+	ClientPEM     string
+	CAFingerprint string
 }
 
 // Generate creates a self-signed CA, server certificate, and client certificate
@@ -46,12 +48,16 @@ func Generate(outDir string, serverHosts []string, validDays int) (*CertFiles, e
 		return nil, fmt.Errorf("generate client cert: %w", err)
 	}
 
+	h := sha256.Sum256(caCertDER)
+	caFP := fmt.Sprintf("%x", h[:4])
+
 	files := &CertFiles{
-		CACert:     filepath.Join(outDir, "ca.crt"),
-		CAKey:      filepath.Join(outDir, "ca.key"),
-		ServerCert: filepath.Join(outDir, "server.crt"),
-		ServerKey:  filepath.Join(outDir, "server.key"),
-		ClientPEM:  filepath.Join(outDir, "client.pem"),
+		CACert:        filepath.Join(outDir, "ca.crt"),
+		CAKey:         filepath.Join(outDir, "ca.key"),
+		ServerCert:    filepath.Join(outDir, "server.crt"),
+		ServerKey:     filepath.Join(outDir, "server.key"),
+		ClientPEM:     filepath.Join(outDir, "client.pem"),
+		CAFingerprint: caFP,
 	}
 
 	if err := writePEM(files.CACert, "CERTIFICATE", caCertDER); err != nil {

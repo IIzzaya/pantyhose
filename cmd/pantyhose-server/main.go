@@ -64,6 +64,14 @@ func main() {
 	case "--help", "-help", "-h":
 		printTopLevelHelp()
 	default:
+		if !strings.HasPrefix(os.Args[1], "-") {
+			red := "\033[1;31m"
+			reset := "\033[0m"
+			fmt.Fprintf(os.Stderr, "%sUnknown command %q%s\n\n", red, os.Args[1], reset)
+			fmt.Fprintln(os.Stderr, "Available commands: serve, gencert")
+			fmt.Fprintln(os.Stderr, "Run 'pantyhose-server --help' for usage.")
+			os.Exit(1)
+		}
 		runServe(os.Args[1:])
 	}
 }
@@ -94,7 +102,26 @@ func runGencert(args []string) {
 	outDir := fs.String("out", "./certs", "Output directory for generated certificates")
 	hosts := fs.String("hosts", "", "Comma-separated list of additional server hostnames/IPs (e.g. 10.0.0.5,proxy.local)")
 	days := fs.Int("days", 3650, "Certificate validity in days")
+	force := fs.Bool("force", false, "Overwrite existing certificates without prompting")
 	fs.Parse(args)
+
+	if !*force {
+		existing := checkCertFiles(
+			fmt.Sprintf("%s/ca.crt", *outDir),
+			fmt.Sprintf("%s/server.crt", *outDir),
+			fmt.Sprintf("%s/client.pem", *outDir),
+		)
+		hasExisting := len(existing) < 3
+		if hasExisting {
+			yellow := "\033[1;33m"
+			reset := "\033[0m"
+			fmt.Fprintf(os.Stderr, "%s[WARNING] Certificate files already exist in %s%s\n", yellow, *outDir, reset)
+			fmt.Fprintln(os.Stderr, "Regenerating will invalidate all existing client.pem files.")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "To overwrite, run:  pantyhose-server gencert --force")
+			os.Exit(1)
+		}
+	}
 
 	var serverHosts []string
 	if *hosts != "" {
@@ -136,6 +163,7 @@ func runGencert(args []string) {
 	fmt.Fprintf(os.Stderr, "  %s  (server certificate)\n", files.ServerCert)
 	fmt.Fprintf(os.Stderr, "  %s  (server private key)\n", files.ServerKey)
 	fmt.Fprintf(os.Stderr, "  %s  (client bundle: CA cert + client cert + client key)\n", files.ClientPEM)
+	fmt.Fprintf(os.Stderr, "\nCA fingerprint: %s\n", files.CAFingerprint)
 	fmt.Fprintf(os.Stderr, "\nServer usage:\n")
 	fmt.Fprintf(os.Stderr, "  pantyhose-server serve\n\n")
 	fmt.Fprintf(os.Stderr, "Client usage:\n")
@@ -261,6 +289,7 @@ func runServe(args []string) {
 	}
 
 	green := "\033[1;32m"
+	yellow := "\033[1;33m"
 	reset := "\033[0m"
 
 	if tlsMode {
@@ -269,14 +298,22 @@ func runServe(args []string) {
 			log.Fatalf("Failed to start TLS tunnel: %v", err)
 		}
 
+		if verbose {
+			tunnelSrv.SetLogOutput(log.Writer())
+		}
+
 		go func() {
 			sig := <-sigCh
 			log.Printf("Received signal %v, shutting down...", sig)
+			if n := tunnelSrv.ActiveSessions(); n > 0 {
+				log.Printf("Closing %d active tunnel session(s)...", n)
+			}
 			tunnelSrv.Close()
 		}()
 
+		caFP := tunnelSrv.CAFingerprint()
 		log.Printf("SOCKS5 server listening on %s (TLS + yamux)", listenAddr)
-		fmt.Fprintf(os.Stderr, "%sServer started (TLS mode). Press Ctrl+C to stop.%s\n", green, reset)
+		fmt.Fprintf(os.Stderr, "%sServer %s started (TLS mode, CA:%s). Press Ctrl+C to stop.%s\n", green, version, caFP, reset)
 		serveTLSMode(tunnelSrv, server, sniHandler, *tcpTimeout)
 		log.Println("Server stopped.")
 	} else {
@@ -296,7 +333,8 @@ func runServe(args []string) {
 		}()
 
 		log.Printf("SOCKS5 server listening on %s (TCP + UDP) [insecure mode]", listenAddr)
-		fmt.Fprintf(os.Stderr, "%sServer started (insecure mode). Press Ctrl+C to stop.%s\n", green, reset)
+		fmt.Fprintf(os.Stderr, "%sServer %s started (insecure mode). Press Ctrl+C to stop.%s\n", yellow, version, reset)
+		fmt.Fprintf(os.Stderr, "%sWARNING: No encryption, no authentication. Do not expose to untrusted networks.%s\n", yellow, reset)
 
 		if err := server.ListenAndServe(handler); err != nil {
 			if isShutdownError(err) {
@@ -362,16 +400,16 @@ func checkFirewall(port string) {
 		return
 	}
 
-	red := "\033[1;31m"
+	yellow := "\033[1;33m"
 	reset := "\033[0m"
-	fmt.Fprintf(os.Stderr, "%s[ERROR] Firewall may block inbound connections. Please run the following commands in an Administrator terminal:%s\n", red, reset)
+	fmt.Fprintf(os.Stderr, "%s[WARNING] Firewall may block inbound connections. Run the following commands in an Administrator terminal:%s\n", yellow, reset)
 	if !tcpOk {
-		fmt.Fprintf(os.Stderr, "%s  netsh advfirewall firewall add rule name=\"pantyhose-tcp\" dir=in action=allow protocol=TCP localport=%s%s\n", red, port, reset)
+		fmt.Fprintf(os.Stderr, "%s  netsh advfirewall firewall add rule name=\"pantyhose-tcp\" dir=in action=allow protocol=TCP localport=%s%s\n", yellow, port, reset)
 	}
 	if !udpOk {
-		fmt.Fprintf(os.Stderr, "%s  netsh advfirewall firewall add rule name=\"pantyhose-udp\" dir=in action=allow protocol=UDP localport=%s%s\n", red, port, reset)
+		fmt.Fprintf(os.Stderr, "%s  netsh advfirewall firewall add rule name=\"pantyhose-udp\" dir=in action=allow protocol=UDP localport=%s%s\n", yellow, port, reset)
 	}
-	os.Exit(1)
+	fmt.Fprintf(os.Stderr, "%sPress Ctrl+C to abort if needed.%s\n", yellow, reset)
 }
 
 func checkFirewallRules(port string) (tcpOk, udpOk bool) {

@@ -1,8 +1,10 @@
 package certgen
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -147,5 +149,56 @@ func TestGenerateDefaultHosts(t *testing.T) {
 	}
 	if len(cert.IPAddresses) == 0 {
 		t.Error("server cert should have at least 127.0.0.1 when no hosts specified")
+	}
+}
+
+func TestGenerateCAFingerprint(t *testing.T) {
+	dir := t.TempDir()
+	files, err := Generate(dir, []string{"127.0.0.1"}, 30)
+	if err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	if files.CAFingerprint == "" {
+		t.Fatal("CAFingerprint should not be empty")
+	}
+
+	if len(files.CAFingerprint) != 8 {
+		t.Errorf("CAFingerprint should be 8 hex chars, got %d: %q", len(files.CAFingerprint), files.CAFingerprint)
+	}
+
+	// Regenerating with different keys should produce a different fingerprint.
+	dir2 := t.TempDir()
+	files2, err := Generate(dir2, []string{"127.0.0.1"}, 30)
+	if err != nil {
+		t.Fatalf("Generate (second) failed: %v", err)
+	}
+
+	if files.CAFingerprint == files2.CAFingerprint {
+		t.Error("different CA keys should produce different fingerprints")
+	}
+}
+
+func TestGenerateConsistentFingerprint(t *testing.T) {
+	dir := t.TempDir()
+	files, err := Generate(dir, []string{"127.0.0.1"}, 30)
+	if err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	caCertPEM, err := os.ReadFile(files.CACert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, _ := pem.Decode(caCertPEM)
+	if block == nil {
+		t.Fatal("failed to decode CA cert PEM")
+	}
+
+	h := sha256.Sum256(block.Bytes)
+	expected := fmt.Sprintf("%x", h[:4])
+
+	if files.CAFingerprint != expected {
+		t.Errorf("fingerprint mismatch: got %q, want %q", files.CAFingerprint, expected)
 	}
 }

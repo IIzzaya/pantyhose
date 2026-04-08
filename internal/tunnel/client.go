@@ -1,10 +1,12 @@
 package tunnel
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -17,12 +19,14 @@ import (
 // Client maintains a TLS+yamux session to a remote tunnel server and opens
 // new streams on demand.
 type Client struct {
-	serverAddr string
-	tlsCfg     *tls.Config
-	session    *yamux.Session
-	mu         sync.Mutex
-	closed     chan struct{}
-	closeOnce  sync.Once
+	serverAddr    string
+	tlsCfg        *tls.Config
+	session       *yamux.Session
+	mu            sync.Mutex
+	reconnectMu   sync.Mutex
+	closed        chan struct{}
+	closeOnce     sync.Once
+	caFingerprint string
 }
 
 // NewClient creates a tunnel client that connects to the given server address
@@ -42,7 +46,13 @@ func NewClient(serverAddr, certFile, keyFile, caFile string) (*Client, error) {
 		return nil, fmt.Errorf("invalid CA certificate")
 	}
 
-	return newClient(serverAddr, cert, caPool)
+	var caFP string
+	if block, _ := pem.Decode(caCertPEM); block != nil {
+		h := sha256.Sum256(block.Bytes)
+		caFP = fmt.Sprintf("%x", h[:4])
+	}
+
+	return newClient(serverAddr, cert, caPool, caFP)
 }
 
 // NewClientFromPEM creates a tunnel client from a single PEM file containing
@@ -84,6 +94,9 @@ func NewClientFromPEM(serverAddr, pemFile string) (*Client, error) {
 	}
 	caPool.AddCert(caCert)
 
+	h := sha256.Sum256(certs[0])
+	caFP := fmt.Sprintf("%x", h[:4])
+
 	privateKey, err := x509.ParseECPrivateKey(keyDER)
 	if err != nil {
 		return nil, fmt.Errorf("parse private key: %w", err)
@@ -94,10 +107,10 @@ func NewClientFromPEM(serverAddr, pemFile string) (*Client, error) {
 		PrivateKey:  privateKey,
 	}
 
-	return newClient(serverAddr, clientCert, caPool)
+	return newClient(serverAddr, clientCert, caPool, caFP)
 }
 
-func newClient(serverAddr string, cert tls.Certificate, caPool *x509.CertPool) (*Client, error) {
+func newClient(serverAddr string, cert tls.Certificate, caPool *x509.CertPool, caFingerprint string) (*Client, error) {
 	host, _, err := net.SplitHostPort(serverAddr)
 	if err != nil {
 		host = serverAddr
@@ -111,12 +124,18 @@ func newClient(serverAddr string, cert tls.Certificate, caPool *x509.CertPool) (
 	}
 
 	c := &Client{
-		serverAddr: serverAddr,
-		tlsCfg:     tlsCfg,
-		closed:     make(chan struct{}),
+		serverAddr:    serverAddr,
+		tlsCfg:        tlsCfg,
+		closed:        make(chan struct{}),
+		caFingerprint: caFingerprint,
 	}
 
 	return c, nil
+}
+
+// CAFingerprint returns the short SHA256 fingerprint of the CA certificate.
+func (c *Client) CAFingerprint() string {
+	return c.caFingerprint
 }
 
 // Connect establishes the initial TLS+yamux session. Call this once before
@@ -139,7 +158,7 @@ func (c *Client) reconnect() error {
 	}
 
 	cfg := yamux.DefaultConfig()
-	cfg.LogOutput = log.Writer()
+	cfg.LogOutput = io.Discard
 
 	session, err := yamux.Client(conn, cfg)
 	if err != nil {
@@ -183,6 +202,17 @@ func (c *Client) OpenStream() (net.Conn, error) {
 }
 
 func (c *Client) reconnectWithBackoff() error {
+	c.reconnectMu.Lock()
+	defer c.reconnectMu.Unlock()
+
+	// Another goroutine may have already reconnected while we waited for the lock.
+	c.mu.Lock()
+	sess := c.session
+	c.mu.Unlock()
+	if sess != nil && !sess.IsClosed() {
+		return nil
+	}
+
 	backoff := time.Second
 	maxBackoff := 60 * time.Second
 

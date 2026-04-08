@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 
 	"pantyhose/internal/tunnel"
@@ -42,7 +43,9 @@ func main() {
 	}
 
 	if _, err := os.Stat(*pemFile); err != nil {
-		fmt.Fprintf(os.Stderr, "Client PEM file not found: %s\n", *pemFile)
+		red := "\033[1;31m"
+		reset := "\033[0m"
+		fmt.Fprintf(os.Stderr, "%sClient PEM file not found: %s%s\n", red, *pemFile, reset)
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Copy client.pem from the server machine to ./certs/")
 		os.Exit(1)
@@ -50,12 +53,21 @@ func main() {
 
 	client, err := tunnel.NewClientFromPEM(*server, *pemFile)
 	if err != nil {
-		log.Fatalf("Failed to create tunnel client: %v", err)
+		red := "\033[1;31m"
+		reset := "\033[0m"
+		fmt.Fprintf(os.Stderr, "%sFailed to create tunnel client: %v%s\n", red, err, reset)
+		os.Exit(1)
 	}
 
 	log.Printf("Connecting to %s...", *server)
 	if err := client.Connect(); err != nil {
-		log.Fatalf("Failed to connect to server: %v", err)
+		red := "\033[1;31m"
+		reset := "\033[0m"
+		info := tunnel.ClassifyConnectError(err)
+		fmt.Fprintf(os.Stderr, "%s[ERROR] %s%s\n", red, info.Category, reset)
+		fmt.Fprintf(os.Stderr, "%s  %s%s\n", red, info.Suggestion, reset)
+		fmt.Fprintf(os.Stderr, "\n  Detail: %v\n", err)
+		os.Exit(1)
 	}
 	log.Printf("Connected to %s", *server)
 
@@ -64,23 +76,34 @@ func main() {
 		log.Fatalf("Failed to listen on %s: %v", *listen, err)
 	}
 
+	var shuttingDown atomic.Bool
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigCh
+		shuttingDown.Store(true)
 		log.Printf("Received signal %v, shutting down...", sig)
 		ln.Close()
 		client.Close()
 	}()
 
+	caFP := client.CAFingerprint()
 	log.Printf("SOCKS5 listening on %s -> tunnel -> %s", *listen, *server)
 	green := "\033[1;32m"
 	reset := "\033[0m"
-	fmt.Fprintf(os.Stderr, "%sClient started. Press Ctrl+C to stop.%s\n", green, reset)
+	fmt.Fprintf(os.Stderr, "%sClient %s started (CA:%s). Press Ctrl+C to stop.%s\n", green, version, caFP, reset)
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
+			if shuttingDown.Load() {
+				log.Println("Client stopped.")
+			} else {
+				red := "\033[1;31m"
+				rst := "\033[0m"
+				fmt.Fprintf(os.Stderr, "%s[ERROR] Accept failed: %v%s\n", red, err, rst)
+			}
 			return
 		}
 		go handleLocalConn(conn, client)

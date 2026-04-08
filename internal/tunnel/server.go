@@ -1,9 +1,12 @@
 package tunnel
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -15,12 +18,14 @@ import (
 // Server accepts TLS+yamux connections and exposes each multiplexed stream
 // as a net.Conn via a standard net.Listener interface.
 type Server struct {
-	tlsListener net.Listener
-	streamCh    chan net.Conn
-	sessions    []*yamux.Session
-	mu          sync.Mutex
-	closed      chan struct{}
-	closeOnce   sync.Once
+	tlsListener   net.Listener
+	streamCh      chan net.Conn
+	sessions      map[*yamux.Session]string // session → remote addr
+	mu            sync.Mutex
+	closed        chan struct{}
+	closeOnce     sync.Once
+	caFingerprint string
+	logOutput     io.Writer
 }
 
 // NewServer creates a TLS listener with mTLS (mutual TLS) on the given address
@@ -41,6 +46,12 @@ func NewServer(addr, certFile, keyFile, caFile string) (*Server, error) {
 		return nil, fmt.Errorf("invalid CA certificate")
 	}
 
+	var caFP string
+	if block, _ := pem.Decode(caCertPEM); block != nil {
+		h := sha256.Sum256(block.Bytes)
+		caFP = fmt.Sprintf("%x", h[:4])
+	}
+
 	tlsCfg := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		ClientCAs:    caPool,
@@ -54,13 +65,36 @@ func NewServer(addr, certFile, keyFile, caFile string) (*Server, error) {
 	}
 
 	s := &Server{
-		tlsListener: ln,
-		streamCh:    make(chan net.Conn, 256),
-		closed:      make(chan struct{}),
+		tlsListener:   ln,
+		streamCh:      make(chan net.Conn, 256),
+		sessions:      make(map[*yamux.Session]string),
+		closed:        make(chan struct{}),
+		caFingerprint: caFP,
+		logOutput:     io.Discard,
 	}
 
 	go s.acceptLoop()
 	return s, nil
+}
+
+// SetLogOutput sets the writer for yamux internal logs. By default, yamux
+// logs are discarded. Call this immediately after NewServer returns.
+func (s *Server) SetLogOutput(w io.Writer) {
+	s.mu.Lock()
+	s.logOutput = w
+	s.mu.Unlock()
+}
+
+// CAFingerprint returns the short SHA256 fingerprint of the CA certificate.
+func (s *Server) CAFingerprint() string {
+	return s.caFingerprint
+}
+
+// ActiveSessions returns the number of currently connected tunnel sessions.
+func (s *Server) ActiveSessions() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.sessions)
 }
 
 func (s *Server) acceptLoop() {
@@ -81,7 +115,9 @@ func (s *Server) acceptLoop() {
 
 func (s *Server) handleSession(conn net.Conn) {
 	cfg := yamux.DefaultConfig()
-	cfg.LogOutput = log.Writer()
+	s.mu.Lock()
+	cfg.LogOutput = s.logOutput
+	s.mu.Unlock()
 
 	session, err := yamux.Server(conn, cfg)
 	if err != nil {
@@ -90,24 +126,31 @@ func (s *Server) handleSession(conn net.Conn) {
 		return
 	}
 
+	addr := conn.RemoteAddr().String()
+
 	s.mu.Lock()
-	s.sessions = append(s.sessions, session)
+	s.sessions[session] = addr
+	active := len(s.sessions)
 	s.mu.Unlock()
 
-	log.Printf("New tunnel session from %s", conn.RemoteAddr())
+	log.Printf("[%s] Tunnel session connected (active: %d)", addr, active)
+
+	defer func() {
+		s.mu.Lock()
+		delete(s.sessions, session)
+		active := len(s.sessions)
+		s.mu.Unlock()
+
+		select {
+		case <-s.closed:
+		default:
+			log.Printf("[%s] Tunnel session disconnected (active: %d)", addr, active)
+		}
+	}()
 
 	for {
 		stream, err := session.Accept()
 		if err != nil {
-			select {
-			case <-s.closed:
-			default:
-				if session.IsClosed() {
-					log.Printf("Tunnel session from %s disconnected", conn.RemoteAddr())
-				} else {
-					log.Printf("Tunnel session from %s closed: %v", conn.RemoteAddr(), err)
-				}
-			}
 			return
 		}
 		select {
@@ -140,9 +183,10 @@ func (s *Server) Close() error {
 	s.closeOnce.Do(func() {
 		close(s.closed)
 		s.mu.Lock()
-		for _, sess := range s.sessions {
+		for sess := range s.sessions {
 			sess.Close()
 		}
+		s.sessions = make(map[*yamux.Session]string)
 		s.mu.Unlock()
 		s.tlsListener.Close()
 	})
