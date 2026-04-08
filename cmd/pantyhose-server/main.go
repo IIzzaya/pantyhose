@@ -18,6 +18,7 @@ import (
 
 	"github.com/txthinking/socks5"
 	"pantyhose/internal/certgen"
+	"pantyhose/internal/tunnel"
 )
 
 var (
@@ -129,6 +130,9 @@ func runServe(args []string) {
 	noSNIRemap := fs.Bool("no-sni-remap", false, "Disable TLS SNI hostname re-resolution (SNI remap is enabled by default)")
 	sniPorts := fs.String("sni-ports", "443", "Comma-separated list of ports to apply SNI remap (default: 443)")
 	verboseFlag := fs.Bool("verbose", false, "Enable verbose logging (SNI remap details, connection info)")
+	tlsCert := fs.String("cert", "", "Server TLS certificate file (required for TLS mode)")
+	tlsKey := fs.String("key", "", "Server TLS private key file (required for TLS mode)")
+	tlsCA := fs.String("ca", "", "CA certificate file for client verification (required for TLS mode)")
 	insecure := fs.Bool("insecure", false, "Run without TLS (open proxy, no encryption)")
 	fwClean := fs.Bool("fw-clean", false, "Print commands to remove firewall rules for the listen port and exit")
 	showVersion := fs.Bool("version", false, "Print version and exit")
@@ -147,8 +151,11 @@ func runServe(args []string) {
 		os.Exit(0)
 	}
 
-	if !*insecure {
-		log.Fatalf("TLS mode is required. Use --tls flags (not yet implemented) or --insecure for unencrypted mode.")
+	tlsMode := !*insecure
+	if tlsMode {
+		if *tlsCert == "" || *tlsKey == "" || *tlsCA == "" {
+			log.Fatalf("TLS mode requires --cert, --key, and --ca flags. Use --insecure to run without encryption.")
+		}
 	}
 
 	if *port < 1 || *port > 65535 {
@@ -202,21 +209,13 @@ func runServe(args []string) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	go func() {
-		sig := <-sigCh
-		log.Printf("Received signal %v, shutting down...", sig)
-		if err := server.Shutdown(); err != nil {
-			log.Printf("Shutdown error: %v", err)
-		}
-	}()
-
-	var handler socks5.Handler
+	var sniHandler *SNIRemapHandler
 	if !*noSNIRemap {
 		ports, err := parsePorts(*sniPorts)
 		if err != nil {
 			log.Fatalf("Invalid --sni-ports: %v", err)
 		}
-		handler = &SNIRemapHandler{
+		sniHandler = &SNIRemapHandler{
 			TCPTimeout: *tcpTimeout,
 			UDPTimeout: *udpTimeout,
 			IPv4Only:   ipv4Only,
@@ -224,20 +223,53 @@ func runServe(args []string) {
 		}
 		log.Printf("SNI remap enabled on ports: %s", *sniPorts)
 	} else {
-		handler = &socks5.DefaultHandle{}
 		log.Println("SNI remap disabled")
 	}
 
-	log.Printf("SOCKS5 server listening on %s (TCP + UDP) [insecure mode]", listenAddr)
 	green := "\033[1;32m"
 	reset := "\033[0m"
-	fmt.Fprintf(os.Stderr, "%sServer started (insecure mode). Press Ctrl+C to stop.%s\n", green, reset)
 
-	if err := server.ListenAndServe(handler); err != nil {
-		if isShutdownError(err) {
-			log.Println("Server stopped.")
+	if tlsMode {
+		tunnelSrv, err := tunnel.NewServer(listenAddr, *tlsCert, *tlsKey, *tlsCA)
+		if err != nil {
+			log.Fatalf("Failed to start TLS tunnel: %v", err)
+		}
+
+		go func() {
+			sig := <-sigCh
+			log.Printf("Received signal %v, shutting down...", sig)
+			tunnelSrv.Close()
+		}()
+
+		log.Printf("SOCKS5 server listening on %s (TLS + yamux)", listenAddr)
+		fmt.Fprintf(os.Stderr, "%sServer started (TLS mode). Press Ctrl+C to stop.%s\n", green, reset)
+		serveTLSMode(tunnelSrv, server, sniHandler, *tcpTimeout)
+		log.Println("Server stopped.")
+	} else {
+		var handler socks5.Handler
+		if sniHandler != nil {
+			handler = sniHandler
 		} else {
-			log.Fatalf("Server error: %v", err)
+			handler = &socks5.DefaultHandle{}
+		}
+
+		go func() {
+			sig := <-sigCh
+			log.Printf("Received signal %v, shutting down...", sig)
+			if err := server.Shutdown(); err != nil {
+				log.Printf("Shutdown error: %v", err)
+			}
+		}()
+
+		log.Printf("SOCKS5 server listening on %s (TCP + UDP) [insecure mode]", listenAddr)
+		fmt.Fprintf(os.Stderr, "%sServer started (insecure mode). Press Ctrl+C to stop.%s\n", green, reset)
+
+		if err := server.ListenAndServe(handler); err != nil {
+			if isShutdownError(err) {
+				log.Println("Server stopped.")
+			} else {
+				log.Fatalf("Server error: %v", err)
+			}
 		}
 	}
 }
