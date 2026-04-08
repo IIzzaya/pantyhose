@@ -1,0 +1,7 @@
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    command: ["go", "test", "-v", "-count=1", "-timeout", "120s", "./..."]
