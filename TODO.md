@@ -30,6 +30,8 @@
 - [x] docker-compose.test.yml + Makefile for Docker-based testing
 - [x] GitHub Actions: cross-platform builds (Windows, macOS amd64/arm64, Linux)
 
+- [x] Developer documentation: docs/DESIGN.md, docs/ARCHITECTURE.md, docs/PROTOCOL.md
+
 ## In Progress
 
 _(none)_

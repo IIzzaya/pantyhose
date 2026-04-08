@@ -107,6 +107,9 @@ docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
 | `Makefile` | Common build/test shortcuts |
 | `go.mod` / `go.sum` | Go module dependencies |
 | `.github/workflows/release.yml` | GitHub Actions: cross-platform build & release |
+| `docs/DESIGN.md` | Design decisions record (Chinese) — all architectural choices with rationale |
+| `docs/ARCHITECTURE.md` | System architecture (Chinese) — component diagrams, directory structure, data flow |
+| `docs/PROTOCOL.md` | Protocol & security details (Chinese) — TLS, yamux, SOCKS5, SNI remap, reconnection |
 | `AGENTS.md` | This file — AI agent development guidance |
 | `README.md` | Human-facing usage documentation (Chinese) |
 | `README_EN.md` | Human-facing usage documentation (English) |
