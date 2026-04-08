@@ -137,7 +137,13 @@ func runServe(args []string) {
 	tlsMode := !*insecure
 	if tlsMode {
 		if *tlsCert == "" || *tlsKey == "" || *tlsCA == "" {
-			log.Fatalf("TLS mode requires --cert, --key, and --ca flags. Use --insecure to run without encryption.")
+			fmt.Fprintln(os.Stderr, "TLS mode requires --cert, --key, and --ca flags.")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "  Generate certificates:  pantyhose-server gencert --out ./certs")
+		fmt.Fprintln(os.Stderr, "  Then start the server:  pantyhose-server serve --cert certs/server.crt --key certs/server.key --ca certs/ca.crt")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "  Or run without encryption:  pantyhose-server serve --insecure")
+		os.Exit(1)
 		}
 	}
 
