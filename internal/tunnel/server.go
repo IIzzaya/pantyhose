@@ -102,7 +102,9 @@ func (s *Server) handleSession(conn net.Conn) {
 			select {
 			case <-s.closed:
 			default:
-				if !session.IsClosed() {
+				if session.IsClosed() {
+					log.Printf("Tunnel session from %s disconnected", conn.RemoteAddr())
+				} else {
 					log.Printf("Tunnel session from %s closed: %v", conn.RemoteAddr(), err)
 				}
 			}
