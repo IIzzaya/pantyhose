@@ -96,7 +96,7 @@ func runGencert(args []string) {
 	fmt.Fprintf(os.Stderr, "  %s  (client certificate)\n", files.ClientCert)
 	fmt.Fprintf(os.Stderr, "  %s  (client private key)\n", files.ClientKey)
 	fmt.Fprintf(os.Stderr, "\nServer usage:\n")
-	fmt.Fprintf(os.Stderr, "  pantyhose-server serve --tls --cert %s --key %s --ca %s\n\n", files.ServerCert, files.ServerKey, files.CACert)
+	fmt.Fprintf(os.Stderr, "  pantyhose-server serve\n\n")
 	fmt.Fprintf(os.Stderr, "Client usage:\n")
 	fmt.Fprintf(os.Stderr, "  pantyhose-client --server <host>:1080 --ca %s --cert %s --key %s\n\n", files.CACert, files.ClientCert, files.ClientKey)
 	fmt.Fprintf(os.Stderr, "Copy to client machine: %s, %s, %s\n", files.CACert, files.ClientCert, files.ClientKey)
@@ -113,9 +113,9 @@ func runServe(args []string) {
 	noSNIRemap := fs.Bool("no-sni-remap", false, "Disable TLS SNI hostname re-resolution (SNI remap is enabled by default)")
 	sniPorts := fs.String("sni-ports", "443", "Comma-separated list of ports to apply SNI remap (default: 443)")
 	verboseFlag := fs.Bool("verbose", false, "Enable verbose logging (SNI remap details, connection info)")
-	tlsCert := fs.String("cert", "", "Server TLS certificate file (required for TLS mode)")
-	tlsKey := fs.String("key", "", "Server TLS private key file (required for TLS mode)")
-	tlsCA := fs.String("ca", "", "CA certificate file for client verification (required for TLS mode)")
+	tlsCert := fs.String("cert", "certs/server.crt", "Server TLS certificate file")
+	tlsKey := fs.String("key", "certs/server.key", "Server TLS private key file")
+	tlsCA := fs.String("ca", "certs/ca.crt", "CA certificate file for client verification")
 	insecure := fs.Bool("insecure", false, "Run without TLS (open proxy, no encryption)")
 	fwClean := fs.Bool("fw-clean", false, "Print commands to remove firewall rules for the listen port and exit")
 	showVersion := fs.Bool("version", false, "Print version and exit")
@@ -136,14 +136,18 @@ func runServe(args []string) {
 
 	tlsMode := !*insecure
 	if tlsMode {
-		if *tlsCert == "" || *tlsKey == "" || *tlsCA == "" {
-			fmt.Fprintln(os.Stderr, "TLS mode requires --cert, --key, and --ca flags.")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  Generate certificates:  pantyhose-server gencert --out ./certs")
-		fmt.Fprintln(os.Stderr, "  Then start the server:  pantyhose-server serve --cert certs/server.crt --key certs/server.key --ca certs/ca.crt")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  Or run without encryption:  pantyhose-server serve --insecure")
-		os.Exit(1)
+		missing := checkCertFiles(*tlsCert, *tlsKey, *tlsCA)
+		if len(missing) > 0 {
+			fmt.Fprintln(os.Stderr, "TLS mode: certificate files not found:")
+			for _, m := range missing {
+				fmt.Fprintf(os.Stderr, "  - %s\n", m)
+			}
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "  Generate certificates:  pantyhose-server gencert --out ./certs")
+			fmt.Fprintln(os.Stderr, "  Then start the server:  pantyhose-server serve")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "  Or run without encryption:  pantyhose-server serve --insecure")
+			os.Exit(1)
 		}
 	}
 
@@ -368,6 +372,10 @@ func printHelpCN() {
   --addr string        监听地址，可以是 IP 或 host:port 格式 (默认 "0.0.0.0")
   --port int           监听端口，与 --addr 组合使用 (默认 1080)
   --ip string          UDP ASSOCIATE 回复使用的出站 IP（留空则自动检测）
+  --cert string        服务端 TLS 证书文件 (默认 "certs/server.crt")
+  --key string         服务端 TLS 私钥文件 (默认 "certs/server.key")
+  --ca string          CA 证书文件，用于验证客户端 (默认 "certs/ca.crt")
+  --insecure           不使用 TLS 加密（开放代理模式）
   --tcp-timeout int    TCP 连接空闲超时，单位秒 (默认 60)
   --udp-timeout int    UDP 会话超时，单位秒 (默认 60)
   --enable-ipv6        允许 IPv6 出站连接（默认自动检测，不可用时禁用）
@@ -379,12 +387,23 @@ func printHelpCN() {
   --version            显示版本号后退出
 
 示例:
-  pantyhose-server --insecure                      # 非加密模式启动
-  pantyhose-server --port 8899 --insecure          # 监听 8899 端口
-  pantyhose-server --enable-ipv6 --insecure        # 允许 IPv6 出站连接
-  pantyhose-server --no-sni-remap --insecure       # 禁用 SNI 域名重映射
+  pantyhose-server gencert                         # 生成证书到 ./certs/
+  pantyhose-server serve                           # TLS 模式启动（读取 ./certs/ 下证书）
+  pantyhose-server serve --insecure                # 非加密模式启动
+  pantyhose-server serve --port 8899               # 监听 8899 端口
+  pantyhose-server serve --cert /path/to/my.crt    # 指定自定义证书路径
   pantyhose-server --fw-clean --port 8899          # 输出清理 8899 端口防火墙规则的命令
 `, version)
+}
+
+func checkCertFiles(cert, key, ca string) []string {
+	var missing []string
+	for _, f := range []string{cert, key, ca} {
+		if _, err := os.Stat(f); err != nil {
+			missing = append(missing, f)
+		}
+	}
+	return missing
 }
 
 func isShutdownError(err error) bool {
