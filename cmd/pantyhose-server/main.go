@@ -14,7 +14,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/txthinking/socks5"
 	"pantyhose/internal/certgen"
@@ -44,22 +43,6 @@ func (f *logFilter) Write(p []byte) (n int, err error) {
 func debugf(format string, args ...any) {
 	if verbose {
 		log.Printf("[DEBUG] "+format, args...)
-	}
-}
-
-func enableANSIColors() {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	const enableVirtualTerminalProcessing = 0x0004
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	setConsoleMode := kernel32.NewProc("SetConsoleMode")
-	getConsoleMode := kernel32.NewProc("GetConsoleMode")
-	handle := syscall.Handle(os.Stderr.Fd())
-	var mode uint32
-	r, _, _ := getConsoleMode.Call(uintptr(handle), uintptr(unsafe.Pointer(&mode)))
-	if r != 0 {
-		setConsoleMode.Call(uintptr(handle), uintptr(mode|enableVirtualTerminalProcessing))
 	}
 }
 
