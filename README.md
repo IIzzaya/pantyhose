@@ -64,6 +64,12 @@ pantyhose-server serve --insecure
 
 ### 4. 客户端：连接
 
+> **macOS 用户注意**：从 GitHub Releases 下载的二进制文件需要先添加执行权限才能运行：
+> ```bash
+> chmod +x pantyhose-client-mac-os-apple-silicon   # Apple Silicon (M1/M2/M3/M4)
+> chmod +x pantyhose-client-mac-os-intel             # Intel Mac
+> ```
+
 ```bash
 # 连接到服务端（默认监听 127.0.0.1:1080）
 pantyhose-client --server 10.0.0.5:1080 --ca ca.crt --cert client.crt --key client.key
@@ -149,10 +155,13 @@ docker compose -f docker-compose.test.yml up --build
 
 ```bash
 # macOS (Apple Silicon)
-GOOS=darwin GOARCH=arm64 go build -o pantyhose-client-darwin-arm64 ./cmd/pantyhose-client
+GOOS=darwin GOARCH=arm64 go build -o pantyhose-client-mac-os-apple-silicon ./cmd/pantyhose-client
+
+# macOS (Intel)
+GOOS=darwin GOARCH=amd64 go build -o pantyhose-client-mac-os-intel ./cmd/pantyhose-client
 
 # Linux
-GOOS=linux GOARCH=amd64 go build -o pantyhose-server-linux-amd64 ./cmd/pantyhose-server
+GOOS=linux GOARCH=amd64 go build -o pantyhose-server-linux ./cmd/pantyhose-server
 ```
 
 ## 服务端参数

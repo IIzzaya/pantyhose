@@ -206,14 +206,29 @@ Releases are automated via GitHub Actions (`.github/workflows/release.yml`).
 5. A GitHub Release is created with 8 binaries (server + client × 4 platforms)
 
 **Release artifacts:**
-- `pantyhose-server-windows-amd64.exe`
-- `pantyhose-server-darwin-amd64` / `pantyhose-server-darwin-arm64`
-- `pantyhose-server-linux-amd64`
-- `pantyhose-client-windows-amd64.exe`
-- `pantyhose-client-darwin-amd64` / `pantyhose-client-darwin-arm64`
-- `pantyhose-client-linux-amd64`
+- `pantyhose-server-windows.exe`
+- `pantyhose-server-mac-os-intel` / `pantyhose-server-mac-os-apple-silicon`
+- `pantyhose-server-linux`
+- `pantyhose-client-windows.exe`
+- `pantyhose-client-mac-os-intel` / `pantyhose-client-mac-os-apple-silicon`
+- `pantyhose-client-linux`
 
 **Version embedding:** The `version` variable in each `main.go` defaults to `"dev"`. Release builds inject the real version from the git tag via `ldflags`. Never hardcode a version number in source.
+
+## Binary Naming Convention
+
+Release binaries use user-friendly platform names, **not** Go `GOOS/GOARCH` identifiers:
+
+| Platform | Server binary | Client binary |
+|----------|--------------|---------------|
+| Windows | `pantyhose-server-windows.exe` | `pantyhose-client-windows.exe` |
+| macOS (Apple Silicon) | `pantyhose-server-mac-os-apple-silicon` | `pantyhose-client-mac-os-apple-silicon` |
+| macOS (Intel) | `pantyhose-server-mac-os-intel` | `pantyhose-client-mac-os-intel` |
+| Linux | `pantyhose-server-linux` | `pantyhose-client-linux` |
+
+Pattern: `pantyhose-{server|client}-{platform}[.exe]`
+
+**Do NOT** use Go internal names like `darwin-arm64`, `darwin-amd64`, `linux-amd64`, or `windows-amd64` in binary filenames or documentation. These are confusing to end users. When adding new platforms, follow the same user-friendly naming convention.
 
 ## Adding New Features
 

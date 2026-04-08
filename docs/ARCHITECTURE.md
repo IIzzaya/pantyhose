@@ -255,8 +255,8 @@ Go 标准库提供：
 | `pantyhose-client` | `go build ./cmd/pantyhose-client` | Windows / macOS / Linux |
 
 GitHub Actions 自动构建 8 个产物：
-- pantyhose-server: windows-amd64, darwin-amd64, darwin-arm64, linux-amd64
-- pantyhose-client: windows-amd64, darwin-amd64, darwin-arm64, linux-amd64
+- pantyhose-server: windows, mac-os-intel, mac-os-apple-silicon, linux
+- pantyhose-client: windows, mac-os-intel, mac-os-apple-silicon, linux
 
 ## 测试架构
 
