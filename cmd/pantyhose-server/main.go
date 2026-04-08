@@ -17,6 +17,7 @@ import (
 	"unsafe"
 
 	"github.com/txthinking/socks5"
+	"pantyhose/internal/certgen"
 )
 
 var (
@@ -63,19 +64,76 @@ func enableANSIColors() {
 
 func main() {
 	enableANSIColors()
-	addr := flag.String("addr", "0.0.0.0", "Listen address (IP or host:port; use --port to set port separately)")
-	port := flag.Int("port", 1080, "Listen port (combined with --addr)")
-	ip := flag.String("ip", "", "Outbound IP for UDP ASSOCIATE replies (auto-detected if empty)")
-	tcpTimeout := flag.Int("tcp-timeout", 60, "TCP connection idle timeout in seconds")
-	udpTimeout := flag.Int("udp-timeout", 60, "UDP session timeout in seconds")
-	enableIPv6 := flag.Bool("enable-ipv6", false, "Allow IPv6 outbound connections (default: IPv6 auto-disabled if unavailable)")
-	noSNIRemap := flag.Bool("no-sni-remap", false, "Disable TLS SNI hostname re-resolution (SNI remap is enabled by default)")
-	sniPorts := flag.String("sni-ports", "443", "Comma-separated list of ports to apply SNI remap (default: 443)")
-	verboseFlag := flag.Bool("verbose", false, "Enable verbose logging (SNI remap details, connection info)")
-	fwClean := flag.Bool("fw-clean", false, "Print commands to remove firewall rules for the listen port and exit (does not start server)")
-	showVersion := flag.Bool("version", false, "Print version and exit")
-	helpCN := flag.Bool("help-cn", false, "Print usage in Chinese and exit")
-	flag.Parse()
+
+	if len(os.Args) > 1 && os.Args[1] == "gencert" {
+		runGencert(os.Args[2:])
+		return
+	}
+
+	args := os.Args[1:]
+	if len(os.Args) > 1 && os.Args[1] == "serve" {
+		args = os.Args[2:]
+	}
+
+	runServe(args)
+}
+
+func runGencert(args []string) {
+	fs := flag.NewFlagSet("gencert", flag.ExitOnError)
+	outDir := fs.String("out", "./certs", "Output directory for generated certificates")
+	hosts := fs.String("hosts", "", "Comma-separated list of additional server hostnames/IPs (e.g. 10.0.0.5,proxy.local)")
+	days := fs.Int("days", 3650, "Certificate validity in days")
+	fs.Parse(args)
+
+	var serverHosts []string
+	if *hosts != "" {
+		for _, h := range strings.Split(*hosts, ",") {
+			h = strings.TrimSpace(h)
+			if h != "" {
+				serverHosts = append(serverHosts, h)
+			}
+		}
+	}
+
+	log.Printf("Generating certificates in %s (valid for %d days)...", *outDir, *days)
+	files, err := certgen.Generate(*outDir, serverHosts, *days)
+	if err != nil {
+		log.Fatalf("Certificate generation failed: %v", err)
+	}
+
+	green := "\033[1;32m"
+	reset := "\033[0m"
+	fmt.Fprintf(os.Stderr, "%sCertificates generated successfully!%s\n\n", green, reset)
+	fmt.Fprintf(os.Stderr, "Files created:\n")
+	fmt.Fprintf(os.Stderr, "  %s  (CA certificate)\n", files.CACert)
+	fmt.Fprintf(os.Stderr, "  %s  (CA private key - keep secure!)\n", files.CAKey)
+	fmt.Fprintf(os.Stderr, "  %s  (server certificate)\n", files.ServerCert)
+	fmt.Fprintf(os.Stderr, "  %s  (server private key)\n", files.ServerKey)
+	fmt.Fprintf(os.Stderr, "  %s  (client certificate)\n", files.ClientCert)
+	fmt.Fprintf(os.Stderr, "  %s  (client private key)\n", files.ClientKey)
+	fmt.Fprintf(os.Stderr, "\nServer usage:\n")
+	fmt.Fprintf(os.Stderr, "  pantyhose-server serve --tls --cert %s --key %s --ca %s\n\n", files.ServerCert, files.ServerKey, files.CACert)
+	fmt.Fprintf(os.Stderr, "Client usage:\n")
+	fmt.Fprintf(os.Stderr, "  pantyhose-client --server <host>:1080 --ca %s --cert %s --key %s\n\n", files.CACert, files.ClientCert, files.ClientKey)
+	fmt.Fprintf(os.Stderr, "Copy to client machine: %s, %s, %s\n", files.CACert, files.ClientCert, files.ClientKey)
+}
+
+func runServe(args []string) {
+	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	addr := fs.String("addr", "0.0.0.0", "Listen address (IP or host:port; use --port to set port separately)")
+	port := fs.Int("port", 1080, "Listen port (combined with --addr)")
+	ip := fs.String("ip", "", "Outbound IP for UDP ASSOCIATE replies (auto-detected if empty)")
+	tcpTimeout := fs.Int("tcp-timeout", 60, "TCP connection idle timeout in seconds")
+	udpTimeout := fs.Int("udp-timeout", 60, "UDP session timeout in seconds")
+	enableIPv6 := fs.Bool("enable-ipv6", false, "Allow IPv6 outbound connections (default: IPv6 auto-disabled if unavailable)")
+	noSNIRemap := fs.Bool("no-sni-remap", false, "Disable TLS SNI hostname re-resolution (SNI remap is enabled by default)")
+	sniPorts := fs.String("sni-ports", "443", "Comma-separated list of ports to apply SNI remap (default: 443)")
+	verboseFlag := fs.Bool("verbose", false, "Enable verbose logging (SNI remap details, connection info)")
+	insecure := fs.Bool("insecure", false, "Run without TLS (open proxy, no encryption)")
+	fwClean := fs.Bool("fw-clean", false, "Print commands to remove firewall rules for the listen port and exit")
+	showVersion := fs.Bool("version", false, "Print version and exit")
+	helpCN := fs.Bool("help-cn", false, "Print usage in Chinese and exit")
+	fs.Parse(args)
 
 	verbose = *verboseFlag
 
@@ -85,16 +143,18 @@ func main() {
 	}
 
 	if *showVersion {
-		fmt.Printf("pantyhose %s\n", version)
+		fmt.Printf("pantyhose-server %s\n", version)
 		os.Exit(0)
+	}
+
+	if !*insecure {
+		log.Fatalf("TLS mode is required. Use --tls flags (not yet implemented) or --insecure for unencrypted mode.")
 	}
 
 	if *port < 1 || *port > 65535 {
 		log.Fatalf("Invalid port %d: must be 1-65535", *port)
 	}
 
-	// Build listen address: if --addr already contains a port, use it as-is;
-	// otherwise combine --addr and --port.
 	listenAddr := *addr
 	if _, _, err := net.SplitHostPort(listenAddr); err != nil {
 		listenAddr = net.JoinHostPort(listenAddr, strconv.Itoa(*port))
@@ -150,13 +210,13 @@ func main() {
 		}
 	}()
 
-	var inner socks5.Handler
+	var handler socks5.Handler
 	if !*noSNIRemap {
 		ports, err := parsePorts(*sniPorts)
 		if err != nil {
 			log.Fatalf("Invalid --sni-ports: %v", err)
 		}
-		inner = &SNIRemapHandler{
+		handler = &SNIRemapHandler{
 			TCPTimeout: *tcpTimeout,
 			UDPTimeout: *udpTimeout,
 			IPv4Only:   ipv4Only,
@@ -164,15 +224,14 @@ func main() {
 		}
 		log.Printf("SNI remap enabled on ports: %s", *sniPorts)
 	} else {
-		inner = &socks5.DefaultHandle{}
+		handler = &socks5.DefaultHandle{}
 		log.Println("SNI remap disabled")
 	}
-	handler := inner
 
-	log.Printf("SOCKS5 server listening on %s (TCP + UDP)", listenAddr)
+	log.Printf("SOCKS5 server listening on %s (TCP + UDP) [insecure mode]", listenAddr)
 	green := "\033[1;32m"
 	reset := "\033[0m"
-	fmt.Fprintf(os.Stderr, "%sServer started. Press Ctrl+C to stop.%s\n", green, reset)
+	fmt.Fprintf(os.Stderr, "%sServer started (insecure mode). Press Ctrl+C to stop.%s\n", green, reset)
 
 	if err := server.ListenAndServe(handler); err != nil {
 		if isShutdownError(err) {
@@ -182,6 +241,7 @@ func main() {
 		}
 	}
 }
+
 
 func detectOutboundIP() (string, error) {
 	conn, err := net.Dial("udp", "8.8.8.8:53")
